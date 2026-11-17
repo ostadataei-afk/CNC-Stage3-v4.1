@@ -1,19 +1,12 @@
-﻿# Stage 2 geometry validator tests. Does NOT touch Desktop\A or Desktop\B.
+# Stage 2 geometry validator tests. Does NOT touch Desktop\A or Desktop\B.
 [CmdletBinding()]
-param([string]$ScriptPath = (Join-Path $PSScriptRoot 'Build-Cnc-Dxf-Global-Pairs-Geometry-Safe-v3.1.ps1'))
+param([string]$ScriptPath = (Join-Path $PSScriptRoot '../Cnc.psm1'))
 $ErrorActionPreference = 'Stop'
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $epsilon = 0.05
 $sizeTolerance = 0.1
 if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw "Missing CNC script: $ScriptPath" }
-$tokens = $null; $errors = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath,[ref]$tokens,[ref]$errors)
-if ($errors.Count -gt 0) { foreach ($e in $errors) { Write-Host $e.Message -ForegroundColor Red }; throw "PowerShell syntax errors: $($errors.Count)" }
-foreach ($name in @('New-DxfPair','Add-DxfPair','Get-FirstValue','ConvertFrom-DxfNumber','ConvertTo-DxfNumber','Get-NotchedVertices','New-SlotLineEntity','Get-TableRule','ConvertTo-DxfGridNumber','Assert-CncGeometry')) {
-    $node = $ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
-    if ($null -eq $node) { throw "Missing required function: $name" }
-    . ([scriptblock]::Create($node.Extent.Text))
-}
+Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 function New-TestPart {
     param([string]$Handle,[double]$MinX,[double]$MinY,[double]$Width,[double]$Height)
     [pscustomobject]@{Handle=$Handle;MinX=$MinX;MaxX=($MinX+$Width);MinY=$MinY;MaxY=($MinY+$Height);Width=$Width;Height=$Height}

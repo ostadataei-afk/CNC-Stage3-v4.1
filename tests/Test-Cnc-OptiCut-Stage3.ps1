@@ -1,6 +1,6 @@
-﻿# Stage 3: full OptiCut format integration tests. No Desktop A/B writes.
+# Stage 3: full OptiCut format integration tests. No Desktop A/B writes.
 [CmdletBinding()]
-param([string]$ScriptPath = (Join-Path $PSScriptRoot 'Build-Cnc-Dxf-OptiCut-Dual-Format-v4.ps1'))
+param([string]$ScriptPath = (Join-Path $PSScriptRoot '../Cnc.psm1'))
 $ErrorActionPreference = 'Stop'
 # Preflight: the DXF fixtures must be next to THIS script, not merely on Desktop.
 $requiredFixtures = @(
@@ -36,19 +36,7 @@ Write-Host 'Stage 3 fixture preflight: 10 TestFixtures and 10 Sample_A_Valid DXF
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $epsilon = 0.05
 $sizeTolerance = 0.1
-$tokens=$null; $errors=$null
-$ast=[System.Management.Automation.Language.Parser]::ParseFile($ScriptPath,[ref]$tokens,[ref]$errors)
-if ($errors.Count -gt 0) { foreach($err in $errors){Write-Host $err.Message -ForegroundColor Red}; throw "PowerShell parsing failed with $($errors.Count) errors" }
-$functionNames=@('New-DxfPair','Add-DxfPair','Get-FirstValue','ConvertFrom-DxfNumber','ConvertTo-DxfNumber','Get-EntityVertices','Get-EntityBounds','Test-RectangleVertices',
- 'Read-DxfDocument','Get-DimensionText','Parse-FeatureLabel','Get-TextRecords','Test-TextInsidePart','Get-OptiCutFormat','Test-TextAtPartCenter',
- 'Get-Orientation','Get-SymmetryState','Get-TableNumber','Assert-ZNotchFitsPart','Get-TableRule','Get-LayerTableInfo','Test-LayerExists','Add-Layer2',
- 'Get-NextHandle','Update-Handseed','Set-PolylineVertices','Get-NotchedVertices','New-SlotLineEntity','ConvertTo-DxfGridNumber','Assert-CncGeometry',
- 'Build-DxfPlan','Get-FilenamePairRole','Resolve-GlobalPairs','Apply-DxfPlan','Test-GeneratedDxf')
-foreach($name in $functionNames) {
- $node=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
- if ($null -eq $node) {throw "Required function missing: $name"}
- . ([scriptblock]::Create($node.Extent.Text))
-}
+Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 $passed=0; $failed=0
 function Check([bool]$Condition,[string]$Message) {if (-not $Condition){throw $Message}}
 function Get-Doc([string]$Name) {

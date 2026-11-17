@@ -1,21 +1,11 @@
 # Standalone PowerShell 7 label parser tests. DOES NOT TOUCH Desktop\A or Desktop\B.
 [CmdletBinding()]
-param([string]$ScriptPath = (Join-Path $PSScriptRoot 'Build-Cnc-Dxf-Global-Pairs-Safe-Labels-v2.ps1'))
+param([string]$ScriptPath = (Join-Path $PSScriptRoot '../Cnc.psm1'))
 $ErrorActionPreference = 'Stop'
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $sizeTolerance = 0.1
 if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw "Script missing: $ScriptPath" }
-$tokens = $null; $errors = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$tokens, [ref]$errors)
-if ($errors.Count -gt 0) {
-    foreach ($error in $errors) { Write-Host $error.Message -ForegroundColor Red }
-    throw "PowerShell syntax errors: $($errors.Count)"
-}
-foreach ($functionName in @('Parse-FeatureLabel','Get-TableNumber','Assert-ZNotchFitsPart')) {
-    $f = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $functionName }, $true)
-    if ($null -eq $f) { throw "Cannot locate required function: $functionName" }
-    . ([scriptblock]::Create($f.Extent.Text))
-}
+Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 $cases = @(
     @{ L='SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L='Z'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=32 }
