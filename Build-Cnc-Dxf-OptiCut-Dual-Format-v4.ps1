@@ -178,6 +178,20 @@ function Parse-FeatureLabel {
         LongLength = $long; ShortLength = $short
     }
 }
+function Test-FeatureLabelCandidate {
+    param([string]$Label)
+    # Treat SH/Z as command markers only at token starts. Permit malformed
+    # numeric forms to reach the strict parser, but do not classify words
+    # such as WASH or SHABC as operation labels.
+    $tokens = @($Label.Trim() -split '[_-]')
+    foreach ($token in $tokens) {
+        if ($token -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
+            $token -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])') {
+            return $true
+        }
+    }
+    return $false
+}
 function Get-TextRecords {
     param([object]$Document)
     $records = [System.Collections.Generic.List[object]]::new()
@@ -192,9 +206,9 @@ function Get-TextRecords {
             catch { throw "TEXT '$value' has invalid insertion coordinates." }
         }
         $dim = Get-DimensionText $value
-        # Non-feature annotation TEXT is ignored as before.  Anything that
-        # appears to be an SH/Z instruction must parse fully or fail fast.
-        $candidate = ($null -eq $dim) -and ($value -match '(?i)SH|(?:^|[_-])[0-9.,]*Z')
+        # Non-feature annotation TEXT is ignored.  SH/Z must begin a token
+        # (optionally after a numeric prefix) to be treated as an instruction.
+        $candidate = ($null -eq $dim) -and (Test-FeatureLabelCandidate -Label $value)
         $parsed = $null
         if ($candidate) { $parsed = Parse-FeatureLabel -Label $value }
         $isFeature = $null -ne $parsed
