@@ -26,6 +26,7 @@ $cases = @(
     @{ L='SH-Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='Z-SH'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='_Z-SH'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
+    @{ L='-SH_Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32 }
     @{ L='Zir _ SH 100 _ Z'; O=$true; S=$true; Z=$true; Offset=100; Long=66; Short=32 }
     @{ L='Zir_shab_Z'; O=$false }
@@ -66,7 +67,6 @@ $cases = @(
     @{ L='SHABRANG_SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L='SH_Z-'; O=$false }
     @{ L='SH_-Z'; O=$false }
-    @{ L='-SH_Z'; O=$false }
     @{ L='SH_80Z0'; O=$false }
     @{ L='SH_80Z40_SH'; O=$false }
 )

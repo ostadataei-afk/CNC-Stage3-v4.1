@@ -30,9 +30,6 @@ function Parse-FeatureLabel {
             $identifier = $leading
             $commands = $remainder.Substring(1)
         } else {
-            if (-not $leading -and $name[$firstSeparator.Index] -ne '_') {
-                throw "Invalid feature label '$Label': a leading '-' separator is not allowed."
-            }
             $identifier = $null
             $commands = if (-not $leading) { $name.Substring(1) } else { $name }
         }
