@@ -25,6 +25,10 @@ $cases = @(
     @{ L='Z_sH'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='SH-Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='Z-SH'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
+    @{ L='_Z-SH'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
+    @{ L='SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32 }
+    @{ L='Zir _ SH 100 _ Z'; O=$true; S=$true; Z=$true; Offset=100; Long=66; Short=32 }
+    @{ L='Zir_shab_Z'; O=$false }
     @{ L='01_SH100'; O=$true; S=$true; Z=$false; Offset=100; Long=66; Short=32 }
     @{ L='02_300SH100_Z'; O=$true; S=$true; Z=$true; Offset=100; Long=66; Short=32; Prefix=300 }
     @{ L='SH25_Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32 }
@@ -42,7 +46,7 @@ $cases = @(
     @{ L='300.5SH_Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32; Prefix=300.5 }
     @{ L='300SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32; Prefix=300 }
     @{ L='SH25._Z'; O=$false }
-    @{ L='SH 25_Z'; O=$false }
+    @{ L='SH 25_Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32 }
     @{ L='SH.5_Z'; O=$false }
     @{ L='SH-25_Z'; O=$false }
     @{ L='SH25.5.5_Z'; O=$false }
@@ -57,8 +61,9 @@ $cases = @(
     @{ L='SH_Z_EXTRA'; O=$false }
     @{ L='SH__Z'; O=$false }
     @{ L='SHZ'; O=$false }
-    @{ L='SHABC_Z'; O=$false }
-    @{ L='WASH_Z'; O=$false }
+    @{ L='SHABC_Z'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=32 }
+    @{ L='WASH_Z'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=32 }
+    @{ L='SHABRANG_SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L='SH_Z-'; O=$false }
     @{ L='SH_-Z'; O=$false }
     @{ L='-SH_Z'; O=$false }

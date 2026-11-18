@@ -10,18 +10,44 @@ function Get-DimensionText {
 
 function Parse-FeatureLabel {
     param([string]$Label)
-    # Parse the COMPLETE label, not substrings: malformed numbers must never
-    # silently turn into the default SH/Z measurements.
-    # Grammar: optional single identifier token followed by one or two feature
-    # tokens, separated by _ or -.  SH and Z can appear in either order.
+    # A free-form name may precede the first _/- separator. The command zone
+    # then contains one or two SH/Z commands, separated by _, -, or whitespace.
+    # Spaces around separators and between a command and its numeric argument
+    # are ignored. Parse the complete command zone to reject malformed tokens.
     $name = $Label.Trim()
     $number = '[0-9]+(?:[.,][0-9]+)?'
     $shPattern = '^(?:(?<prefix>' + $number + '))?SH(?:(?<offset>' + $number + '))?$'
     $zPattern = '^(?:(?<long>' + $number + '))?Z(?:(?<short>' + $number + '))?$'
-    $tokens = @($name -split '[_-]' | ForEach-Object { $_.Trim() })
+    $commandPattern = '^(?:(?:' + $number + ')?SH(?:' + $number + ')?|(?:' + $number + ')?Z(?:' + $number + ')?)$'
+    $firstSeparator = [regex]::Match($name, '[_-]')
+    if ($firstSeparator.Success) {
+        $leading = $name.Substring(0, $firstSeparator.Index).Trim()
+        $remainder = $name.Substring($firstSeparator.Index)
+        $normalizedLeading = [regex]::Replace($leading, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
+        $leadingLooksLikeCommand = $normalizedLeading -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
+            $normalizedLeading -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])'
+        if ($leading -and $normalizedLeading -notmatch $commandPattern -and -not $leadingLooksLikeCommand) {
+            $identifier = $leading
+            $commands = $remainder.Substring(1)
+        } else {
+            if (-not $leading -and $name[$firstSeparator.Index] -ne '_') {
+                throw "Invalid feature label '$Label': a leading '-' separator is not allowed."
+            }
+            $identifier = $null
+            $commands = if (-not $leading) { $name.Substring(1) } else { $name }
+        }
+    } else {
+        $identifier = $null
+        $commands = $name
+    }
+    # A leading separator represents an intentionally empty name. Normalize
+    # whitespace around punctuation separators, then preserve empty fields so
+    # repeated/trailing punctuation remains an error.
+    $commands = [regex]::Replace($commands, '[ \t]*([_-])[ \t]*', '$1')
+    $commands = [regex]::Replace($commands, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
+    $tokens = @($commands -split '[_-]' | ForEach-Object { $_.Trim() } | ForEach-Object { if ($_ -match '\s') { $_ -split '\s+' } else { $_ } })
     $hasSH = $false; $hasZ = $false
     $prefix = $null; $offset = 18.0; $long = 66.0; $short = 32.0
-    $identifier = $null
 
     for ($i = 0; $i -lt $tokens.Count; $i++) {
         $token = [string]$tokens[$i]
@@ -40,13 +66,6 @@ function Parse-FeatureLabel {
             $hasZ = $true
             if ($z.Groups['long'].Success) { $long = [double]::Parse($z.Groups['long'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
             if ($z.Groups['short'].Success) { $short = [double]::Parse($z.Groups['short'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-        } elseif ($i -eq 0 -and $token -match '^[A-Za-z0-9]+(?:[ \t]+[A-Za-z0-9]+)*$' -and
-            ($token -notmatch '(?i)SH|Z' -or $token -match '^[0-9]+[ \t]+[A-Za-z0-9]+(?:[ \t]+[A-Za-z0-9]+)*$')) {
-            # A numbered leading identifier may include descriptive words,
-            # even if they contain SH/Z internally (e.g. 01 BKSHO_SH).
-            # Unnumbered text such as WASH remains outside the label grammar.
-            # A numeric identifier is NOT the dimensional prefix before SH.
-            $identifier = $token
         } else {
             throw "Invalid feature label '$Label': unsupported or malformed token '$token'."
         }
@@ -70,10 +89,13 @@ function Parse-FeatureLabel {
 
 function Test-FeatureLabelCandidate {
     param([string]$Label)
-    # Treat SH/Z as command markers only at token starts. Permit malformed
-    # numeric forms to reach the strict parser, but do not classify words
-    # such as WASH or SHABC as operation labels.
-    $tokens = @($Label.Trim() -split '[_-]' | ForEach-Object { $_.Trim() })
+    # Name text is free-form; only a command-shaped token in the command zone
+    # makes the label a candidate. This keeps ordinary WASH/SHABC annotations
+    # ignored while allowing names such as SHABRANG_SH.
+    $value = [regex]::Replace($Label.Trim(), '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
+    $firstSeparator = [regex]::Match($value, '[_-]')
+    $commandZone = if ($firstSeparator.Success) { $value.Substring($firstSeparator.Index + 1) } else { $value }
+    $tokens = @($commandZone -split '[_\-\s]+' | ForEach-Object { $_.Trim() })
     foreach ($token in $tokens) {
         if ($token -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
             $token -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])') {
