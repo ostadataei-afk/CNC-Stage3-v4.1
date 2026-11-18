@@ -11,6 +11,7 @@ $cases = @(
     @{ L='KNR_ sh'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L=' KNR _ sh '; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L='02 KAF_SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
+    @{ L='01 BKSHO_SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L='02 KAF _ SH _ Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='02 KAF - 300SH25 - 80Z40'; O=$true; S=$true; Z=$true; Offset=25; Long=80; Short=40; Prefix=300 }
     @{ L='KNR - z40'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=40 }

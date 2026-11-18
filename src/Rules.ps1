@@ -40,10 +40,12 @@ function Parse-FeatureLabel {
             $hasZ = $true
             if ($z.Groups['long'].Success) { $long = [double]::Parse($z.Groups['long'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
             if ($z.Groups['short'].Success) { $short = [double]::Parse($z.Groups['short'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-        } elseif ($i -eq 0 -and $token -match '^[A-Za-z0-9]+(?:[ \t]+[A-Za-z0-9]+)*$' -and $token -notmatch '(?i)SH|Z') {
-            # The leading identifier may contain space-separated words,
-            # e.g. 01_SH100 or 02 KAF_SH100. A numeric identifier is
-            # NOT the dimensional prefix before SH.
+        } elseif ($i -eq 0 -and $token -match '^[A-Za-z0-9]+(?:[ \t]+[A-Za-z0-9]+)*$' -and
+            ($token -notmatch '(?i)SH|Z' -or $token -match '^[0-9]+[ \t]+[A-Za-z0-9]+(?:[ \t]+[A-Za-z0-9]+)*$')) {
+            # A numbered leading identifier may include descriptive words,
+            # even if they contain SH/Z internally (e.g. 01 BKSHO_SH).
+            # Unnumbered text such as WASH remains outside the label grammar.
+            # A numeric identifier is NOT the dimensional prefix before SH.
             $identifier = $token
         } else {
             throw "Invalid feature label '$Label': unsupported or malformed token '$token'."
