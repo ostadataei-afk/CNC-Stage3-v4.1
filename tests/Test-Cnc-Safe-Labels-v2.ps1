@@ -8,6 +8,13 @@ if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw "Script mi
 Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 $cases = @(
     @{ L='SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
+    @{ L='KNR_ sh'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
+    @{ L=' KNR _ sh '; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
+    @{ L='02 KAF_SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
+    @{ L='02 KAF _ SH _ Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
+    @{ L='02 KAF - 300SH25 - 80Z40'; O=$true; S=$true; Z=$true; Offset=25; Long=80; Short=40; Prefix=300 }
+    @{ L='KNR - z40'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=40 }
+    @{ L=' KNR _ sh _ z40 '; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=40 }
     @{ L='Z'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='sh'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
     @{ L='z'; O=$true; S=$false; Z=$true; Offset=18; Long=66; Short=32 }
@@ -34,6 +41,7 @@ $cases = @(
     @{ L='300.5SH_Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32; Prefix=300.5 }
     @{ L='300SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32; Prefix=300 }
     @{ L='SH25._Z'; O=$false }
+    @{ L='SH 25_Z'; O=$false }
     @{ L='SH.5_Z'; O=$false }
     @{ L='SH-25_Z'; O=$false }
     @{ L='SH25.5.5_Z'; O=$false }

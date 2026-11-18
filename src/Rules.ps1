@@ -18,7 +18,7 @@ function Parse-FeatureLabel {
     $number = '[0-9]+(?:[.,][0-9]+)?'
     $shPattern = '^(?:(?<prefix>' + $number + '))?SH(?:(?<offset>' + $number + '))?$'
     $zPattern = '^(?:(?<long>' + $number + '))?Z(?:(?<short>' + $number + '))?$'
-    $tokens = @($name -split '[_-]')
+    $tokens = @($name -split '[_-]' | ForEach-Object { $_.Trim() })
     $hasSH = $false; $hasZ = $false
     $prefix = $null; $offset = 18.0; $long = 66.0; $short = 32.0
     $identifier = $null
@@ -40,8 +40,9 @@ function Parse-FeatureLabel {
             $hasZ = $true
             if ($z.Groups['long'].Success) { $long = [double]::Parse($z.Groups['long'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
             if ($z.Groups['short'].Success) { $short = [double]::Parse($z.Groups['short'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-        } elseif ($i -eq 0 -and $token -match '^[A-Za-z0-9]+$' -and $token -notmatch '(?i)SH|Z') {
-            # e.g. 01_SH100, 02_300SH100_Z.  A numeric identifier is
+        } elseif ($i -eq 0 -and $token -match '^[A-Za-z0-9]+(?:[ \t]+[A-Za-z0-9]+)*$' -and $token -notmatch '(?i)SH|Z') {
+            # The leading identifier may contain space-separated words,
+            # e.g. 01_SH100 or 02 KAF_SH100. A numeric identifier is
             # NOT the dimensional prefix before SH.
             $identifier = $token
         } else {
@@ -70,7 +71,7 @@ function Test-FeatureLabelCandidate {
     # Treat SH/Z as command markers only at token starts. Permit malformed
     # numeric forms to reach the strict parser, but do not classify words
     # such as WASH or SHABC as operation labels.
-    $tokens = @($Label.Trim() -split '[_-]')
+    $tokens = @($Label.Trim() -split '[_-]' | ForEach-Object { $_.Trim() })
     foreach ($token in $tokens) {
         if ($token -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
             $token -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])') {
