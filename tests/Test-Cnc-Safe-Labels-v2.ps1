@@ -28,6 +28,8 @@ $cases = @(
     @{ L='_Z-SH'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='-SH_Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32 }
     @{ L='SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32 }
+    @{ L='300 SH25'; O=$true; S=$true; Z=$false; Offset=25; Long=66; Short=32; Prefix=300 }
+    @{ L='300 SH 25'; O=$true; S=$true; Z=$false; Offset=25; Long=66; Short=32; Prefix=300 }
     @{ L='Zir _ SH 100 _ Z'; O=$true; S=$true; Z=$true; Offset=100; Long=66; Short=32 }
     @{ L='Zir_shab_Z'; O=$false }
     @{ L='01_SH100'; O=$true; S=$true; Z=$false; Offset=100; Long=66; Short=32 }

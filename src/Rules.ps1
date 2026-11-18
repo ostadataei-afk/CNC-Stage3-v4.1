@@ -41,6 +41,7 @@ function Parse-FeatureLabel {
     # whitespace around punctuation separators, then preserve empty fields so
     # repeated/trailing punctuation remains an error.
     $commands = [regex]::Replace($commands, '[ \t]*([_-])[ \t]*', '$1')
+    $commands = [regex]::Replace($commands, '(?i)(^|[_-])([0-9]+(?:[.,][0-9]+)?)[ \t]+(SH)(?=[ \t]*(?:$|[0-9.,]))', '$1$2$3')
     $commands = [regex]::Replace($commands, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
     $tokens = @($commands -split '[_-]' | ForEach-Object { $_.Trim() } | ForEach-Object { if ($_ -match '\s') { $_ -split '\s+' } else { $_ } })
     $hasSH = $false; $hasZ = $false
@@ -90,6 +91,7 @@ function Test-FeatureLabelCandidate {
     # makes the label a candidate. This keeps ordinary WASH/SHABC annotations
     # ignored while allowing names such as SHABRANG_SH.
     $value = [regex]::Replace($Label.Trim(), '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
+    $value = [regex]::Replace($value, '(?i)(^|[_-])([0-9]+(?:[.,][0-9]+)?)[ \t]+(SH)(?=[ \t]*(?:$|[0-9.,]))', '$1$2$3')
     $firstSeparator = [regex]::Match($value, '[_-]')
     $commandZone = if ($firstSeparator.Success) { $value.Substring($firstSeparator.Index + 1) } else { $value }
     $tokens = @($commandZone -split '[_\-\s]+' | ForEach-Object { $_.Trim() })
