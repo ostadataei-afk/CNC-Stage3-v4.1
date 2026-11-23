@@ -16,6 +16,7 @@ function Parse-FeatureLabel {
     # are ignored. Parse the complete command zone to reject malformed tokens.
     $name = $Label.Trim()
     $number = '[0-9]+(?:[.,][0-9]+)?'
+    $spacedShPrefix = '(?i)(^|[_-])(' + $number + ')[ \t]+(SH)(?=[ \t]*(?:$|[0-9.,]))'
     $shPattern = '^(?:(?<prefix>' + $number + '))?SH(?:(?<offset>' + $number + '))?$'
     $zPattern = '^(?:(?<long>' + $number + '))?Z(?:(?<short>' + $number + '))?$'
     $commandPattern = '^(?:(?:' + $number + ')?SH(?:' + $number + ')?|(?:' + $number + ')?Z(?:' + $number + ')?)$'
@@ -23,7 +24,8 @@ function Parse-FeatureLabel {
     if ($firstSeparator.Success) {
         $leading = $name.Substring(0, $firstSeparator.Index).Trim()
         $remainder = $name.Substring($firstSeparator.Index)
-        $normalizedLeading = [regex]::Replace($leading, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
+        $normalizedLeading = [regex]::Replace($leading, $spacedShPrefix, '$1$2$3')
+        $normalizedLeading = [regex]::Replace($normalizedLeading, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
         $leadingLooksLikeCommand = $normalizedLeading -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
             $normalizedLeading -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])'
         if ($leading -and $normalizedLeading -notmatch $commandPattern -and -not $leadingLooksLikeCommand) {
@@ -41,7 +43,7 @@ function Parse-FeatureLabel {
     # whitespace around punctuation separators, then preserve empty fields so
     # repeated/trailing punctuation remains an error.
     $commands = [regex]::Replace($commands, '[ \t]*([_-])[ \t]*', '$1')
-    $commands = [regex]::Replace($commands, '(?i)(^|[_-])([0-9]+(?:[.,][0-9]+)?)[ \t]+(SH)(?=[ \t]*(?:$|[0-9.,]))', '$1$2$3')
+    $commands = [regex]::Replace($commands, $spacedShPrefix, '$1$2$3')
     $commands = [regex]::Replace($commands, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
     $tokens = @($commands -split '[_-]' | ForEach-Object { $_.Trim() } | ForEach-Object { if ($_ -match '\s') { $_ -split '\s+' } else { $_ } })
     $hasSH = $false; $hasZ = $false

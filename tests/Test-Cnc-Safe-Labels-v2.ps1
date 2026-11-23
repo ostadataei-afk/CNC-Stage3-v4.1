@@ -30,6 +30,8 @@ $cases = @(
     @{ L='SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32 }
     @{ L='300 SH25'; O=$true; S=$true; Z=$false; Offset=25; Long=66; Short=32; Prefix=300 }
     @{ L='300 SH 25'; O=$true; S=$true; Z=$false; Offset=25; Long=66; Short=32; Prefix=300 }
+    @{ L='300 SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32; Prefix=300; Identifier=$null }
+    @{ L='Name_300 SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32; Prefix=300; Identifier='Name' }
     @{ L='Zir _ SH 100 _ Z'; O=$true; S=$true; Z=$true; Offset=100; Long=66; Short=32 }
     @{ L='Zir_shab_Z'; O=$false }
     @{ L='01_SH100'; O=$true; S=$true; Z=$false; Offset=100; Long=66; Short=32 }
@@ -84,6 +86,7 @@ foreach ($c in $cases) {
         $ok = $ok -and [math]::Abs($got.ShortLength - $c.Short) -lt 0.00001
         if ($c.ContainsKey('Prefix')) { $ok = $ok -and [math]::Abs($got.Prefix - $c.Prefix) -lt 0.00001 }
         else { $ok = $ok -and $null -eq $got.Prefix }
+        if ($c.ContainsKey('Identifier')) { $ok = $ok -and $got.Identifier -ceq $c.Identifier }
     }
     if ($ok) { $passed++ } else { $failed++; Write-Host "FAILED: $($c.L), expected valid=$($c.O), observed=$($null -ne $got), error=$errorText" -ForegroundColor Red }
 }
