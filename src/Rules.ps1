@@ -93,7 +93,7 @@ function Read-FeatureLabel {
 
 function Get-Orientation {
     param([object]$Shape)
-    if ([math]::Abs($Shape.Width - $Shape.Height) -lt 0.001) { throw "Part handle '$($Shape.Handle)' is square; the agreed N/Y rotation rule does not define square parts." }
+    if ([math]::Abs($Shape.Width - $Shape.Height) -lt 0.001) { return 'N' }
     if ($Shape.Width -gt $Shape.Height) { return 'N' }
     return 'Y'
 }
@@ -113,6 +113,7 @@ function Get-TableNumber {
     $matchWidth = [math]::Abs([double]$Shape.Width - [double]$Prefix) -lt $sizeTolerance
     $matchHeight = [math]::Abs([double]$Shape.Height - [double]$Prefix) -lt $sizeTolerance
     if (-not $matchWidth -and -not $matchHeight) { throw "Label '$Label': number before SH ($Prefix) does not match either dimension of part $($Shape.Width) x $($Shape.Height) mm." }
+    if ([math]::Abs([double]$Shape.Width - [double]$Shape.Height) -lt 0.001) { return 2 }
     if ($matchWidth -and $matchHeight) { return 1 }
     $small = [math]::Min([double]$Shape.Width, [double]$Shape.Height)
     if ([math]::Abs([double]$Prefix - $small) -lt $sizeTolerance) { return 1 }

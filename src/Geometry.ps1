@@ -40,8 +40,9 @@ function Get-NotchedVertices {
     # Table 2: long notch length follows the longer dimension; short notch length follows the shorter dimension.
     # Table 1: long notch length follows the shorter dimension; short notch length follows the longer dimension.
     if ($Table -notin @(1,2)) { throw "Unsupported handle-notch table '$Table'." }
-    $horizontalGetsLong = if ($Table -eq 1) { [double]$Shape.Width -lt [double]$Shape.Height } else { [double]$Shape.Width -gt [double]$Shape.Height }
-    $verticalGetsLong = if ($Table -eq 1) { [double]$Shape.Height -lt [double]$Shape.Width } else { [double]$Shape.Height -gt [double]$Shape.Width }
+    $isSquare = [math]::Abs([double]$Shape.Width - [double]$Shape.Height) -lt 0.001
+    $horizontalGetsLong = if ($isSquare) { $Table -eq 2 } elseif ($Table -eq 1) { [double]$Shape.Width -lt [double]$Shape.Height } else { [double]$Shape.Width -gt [double]$Shape.Height }
+    $verticalGetsLong = if ($isSquare) { $Table -eq 1 } elseif ($Table -eq 1) { [double]$Shape.Height -lt [double]$Shape.Width } else { [double]$Shape.Height -gt [double]$Shape.Width }
     $a = [pscustomobject]@{ Name = 'A'; X = [double]$Shape.MinX; Y = [double]$Shape.MaxY }
     $b = [pscustomobject]@{ Name = 'B'; X = [double]$Shape.MaxX; Y = [double]$Shape.MaxY }
     $c = [pscustomobject]@{ Name = 'C'; X = [double]$Shape.MaxX; Y = [double]$Shape.MinY }

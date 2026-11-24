@@ -71,5 +71,33 @@ foreach ($table in 1,2) {
         }
     }
 }
+$squareRight = New-TestPart -Handle 'SQUARE-R' -MinX 100 -MinY 150 -Width 500 -Height 500
+$squareLeft = New-TestPart -Handle 'SQUARE-L' -MinX 700 -MinY 150 -Width 500 -Height 500
+if ((Get-Orientation $squareRight) -ne 'N' -or
+    (Get-TableNumber -Prefix 500 -Shape $squareRight -Label '500SH_Z') -ne 2) {
+    throw 'Square parts must use orientation N and table 2, including when the prefix matches both sides.'
+}
+$squarePair = @(
+    New-TestRecord -Shape $squareRight -Label 'SQUARE_SH_Z' -Table 2 -State 'NN' -Role 'R'
+    New-TestRecord -Shape $squareLeft -Label 'SQUARE_SH_Z' -Table 2 -State 'NN' -Role 'L'
+)
+Assert-CncGeometry -Documents @((New-TestDocument $sheet @($squareRight,$squareLeft) $squarePair)) | Out-Null
+$rightNotch = Get-NotchedVertices -Shape $squareRight -Corner $squarePair[0].Corner -LongLength 66 -ShortLength 32 -Table 2
+$leftNotch = Get-NotchedVertices -Shape $squareLeft -Corner $squarePair[1].Corner -LongLength 66 -ShortLength 32 -Table 2
+if ($rightNotch.Count -ne 6 -or $leftNotch.Count -ne 6 -or
+    $rightNotch[3].X -ne ($squareRight.MaxX - 66) -or
+    $rightNotch[3].Y -ne ($squareRight.MinY + 32) -or
+    $leftNotch[4].X -ne ($squareLeft.MinX + 66) -or
+    $leftNotch[4].Y -ne ($squareLeft.MinY + 32) -or
+    $squarePair[0].GrooveEdge -ne 'AB' -or $squarePair[1].GrooveEdge -ne 'AB') {
+    throw 'Square NN table-2 notches must use mirrored C/D corners with long lengths horizontal.'
+}
+$mixedSquare = New-TestPart -Handle 'SQUARE-N' -MinX 100 -MinY 750 -Width 500 -Height 500
+$mixedRectangle = New-TestPart -Handle 'RECT-Y' -MinX 700 -MinY 750 -Width 300 -Height 600
+$mixedPair = @(
+    New-TestRecord -Shape $mixedSquare -Label 'MIXED_SH_Z' -Table 2 -State 'N/Y' -Role 'R'
+    New-TestRecord -Shape $mixedRectangle -Label 'MIXED_SH_Z' -Table 2 -State 'N/Y' -Role 'L'
+)
+Assert-CncGeometry -Documents @((New-TestDocument $sheet @($mixedSquare,$mixedRectangle) $mixedPair)) | Out-Null
 Write-Host "`nGeometry tests: $passed passed, $failed failed." -ForegroundColor $(if($failed -eq 0){'Green'}else{'Red'})
 if ($failed -gt 0) { throw 'Geometry tests failed.' }
