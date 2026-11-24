@@ -56,9 +56,56 @@ $duplicate = @(Read-Fixture 'Mix-R-Legacy.dxf'; Read-Fixture 'Mix-R-Legacy.dxf')
 $duplicateError = try { New-CncBatchPlan -Documents $duplicate 6>$null | Out-Null } catch { $_.Exception.Message }
 if ($duplicateError -notlike 'Duplicate input filename*') { throw 'Duplicate source names must be rejected.' }
 
+function New-RepeatedPairDocument([string]$Name, [int]$Count) {
+    $records = [System.Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $Count; $index++) {
+        $records.Add([pscustomobject]@{
+            Label = 'MULTI_SH_Z'
+            HasSH = $true
+            HasZ = $true
+            Text = [pscustomobject]@{ EntityIndex = 10 + (2 * $index) }
+            Shape = [pscustomobject]@{ Handle = "PART-$index"; Orientation = 'N' }
+            Table = 2
+            Role = $null
+            State = $null
+            GrooveEdge = $null
+            HandleEdges = @()
+            Corner = $null
+            IsPair = $false
+        })
+    }
+    return [pscustomobject]@{
+        File = [IO.FileInfo]::new((Join-Path $PSScriptRoot $Name))
+        Stats = [pscustomobject]@{ PairCount = 0 }
+        FeatureRecords = $records.ToArray()
+    }
+}
+
+$fourRepeated = New-RepeatedPairDocument 'Repeated-Four.dxf' 4
+Resolve-GlobalPairs -Documents @($fourRepeated) 6>$null
+$roles = @($fourRepeated.FeatureRecords | Sort-Object { $_.Text.EntityIndex } | ForEach-Object { $_.Role })
+$corners = @($fourRepeated.FeatureRecords | Sort-Object { $_.Text.EntityIndex } | ForEach-Object { $_.Corner })
+if ($fourRepeated.Stats.PairCount -ne 2 -or
+    ($roles -join ',') -ne 'R,L,R,L' -or
+    ($corners -join ',') -ne 'C,D,C,D') {
+    throw 'Four identical SH+Z labels must form two successive mirrored R/L pairs.'
+}
+
+$sixRepeated = New-RepeatedPairDocument 'Repeated-Six.dxf' 6
+Resolve-GlobalPairs -Documents @($sixRepeated) 6>$null
+if ($sixRepeated.Stats.PairCount -ne 3) {
+    throw 'Six identical SH+Z labels must form three pairs.'
+}
+
+$oddRepeated = New-RepeatedPairDocument 'Repeated-Odd.dxf' 3
+$oddPairError = try { Resolve-GlobalPairs -Documents @($oddRepeated) 6>$null; $null } catch { $_.Exception.Message }
+if ($oddPairError -notlike "*even number of times*found 3*") {
+    throw "An odd number of repeated SH+Z labels must be rejected clearly: $oddPairError"
+}
+
 $cliOutput = & (Join-Path $root 'Export-Plan.ps1') -SourceFolder (Join-Path $PSScriptRoot 'Sample_A_Valid') 6>&1
 $cliContract = ($cliOutput -join "`n") | ConvertFrom-Json -AsHashtable
 if ($cliContract.files.Count -ne 10 -or $cliContract.schemaVersion -ne 1) {
     throw 'Export-Plan did not emit the expected standalone JSON.'
 }
-Write-Host 'PASS JSON contract, deterministic pairing and duplicate input rejection.'
+Write-Host 'PASS JSON contract, repeated-pair counts, deterministic pairing and duplicate input rejection.'
