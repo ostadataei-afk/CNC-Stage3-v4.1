@@ -1,11 +1,5 @@
-# Stage 2 geometry validator tests. Does NOT touch Desktop\A or Desktop\B.
-[CmdletBinding()]
-param([string]$ScriptPath = (Join-Path $PSScriptRoot '../Cnc.psm1'))
+# Geometry validation for sheet, part, groove, and notch boundaries.
 $ErrorActionPreference = 'Stop'
-$culture = [System.Globalization.CultureInfo]::InvariantCulture
-$epsilon = 0.05
-$sizeTolerance = 0.1
-if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw "Missing CNC script: $ScriptPath" }
 Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 function New-TestPart {
     param([string]$Handle,[double]$MinX,[double]$MinY,[double]$Width,[double]$Height)
@@ -78,4 +72,4 @@ foreach ($table in 1,2) {
     }
 }
 Write-Host "`nGeometry tests: $passed passed, $failed failed." -ForegroundColor $(if($failed -eq 0){'Green'}else{'Red'})
-if ($failed -gt 0) { throw 'Stage 2 geometry tests failed.' }
+if ($failed -gt 0) { throw 'Geometry tests failed.' }

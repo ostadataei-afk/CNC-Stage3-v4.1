@@ -1,6 +1,4 @@
-# Stage 3: full OptiCut format integration tests. No Desktop A/B writes.
-[CmdletBinding()]
-param([string]$ScriptPath = (Join-Path $PSScriptRoot '../Cnc.psm1'))
+# Integration tests for Legacy and Layered OptiCut files.
 $ErrorActionPreference = 'Stop'
 # Preflight: the DXF fixtures must be next to THIS script, not merely on Desktop.
 $requiredFixtures = @(
@@ -23,19 +21,10 @@ if (-not (Test-Path -LiteralPath $samplesPath -PathType Container)) {
     if ($sampleFiles.Count -ne 10) { $missing.Add("$samplesPath (expected 10 DXF files; found $($sampleFiles.Count))") }
 }
 if ($missing.Count -gt 0) {
-    Write-Host ''
-    Write-Host 'TEST FILES MISSING - NO CNC TESTS HAVE RUN.' -ForegroundColor Red
-    Write-Host 'Extract the ENTIRE ZIP with Windows Extract All, retaining these folders:' -ForegroundColor Yellow
-    Write-Host '  TestFixtures (10 DXF files)' -ForegroundColor Yellow
-    Write-Host '  Sample_A_Valid (10 DXF files)' -ForegroundColor Yellow
-    Write-Host "They must be beside: $PSCommandPath" -ForegroundColor Yellow
-    foreach ($path in $missing) { Write-Host "  Missing: $path" -ForegroundColor Red }
-    throw 'Stage 3 test fixtures are missing. Extract the complete ZIP; do not copy only CMD/PS1 files.'
+    $missingPaths = $missing -join ', '
+    throw "OptiCut test inputs are missing or incomplete: $missingPaths"
 }
-Write-Host 'Stage 3 fixture preflight: 10 TestFixtures and 10 Sample_A_Valid DXF files found.' -ForegroundColor Green
-$culture = [System.Globalization.CultureInfo]::InvariantCulture
-$epsilon = 0.05
-$sizeTolerance = 0.1
+Write-Host 'OptiCut fixtures and baseline samples found.' -ForegroundColor Green
 Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 $passed=0; $failed=0
 function Check([bool]$Condition,[string]$Message) {if (-not $Condition){throw $Message}}
@@ -107,7 +96,7 @@ Invoke-Case 'Global pair across Legacy-R and Layered-L files' {
 Invoke-Case 'Reject Panel missing despite Parts being present' { $null=Get-Doc 'Layered-Missing-Panel.dxf' } 'Incomplete layered OptiCut format'
 Invoke-Case 'Reject feature label significantly away from part center' { $null=Get-Doc 'Layered-Offcenter.dxf' } 'matches 0 parts'
 Invoke-Case 'Reject two Panel rectangles' { $null=Get-Doc 'Layered-MultiPanel.dxf' } 'exactly one rectangular Panel outline'
-Invoke-Case 'All 10 baseline CNC files from stage 2 in a single validated batch' {
+Invoke-Case 'All 10 baseline CNC files in a single validated batch' {
  $folder=Join-Path $PSScriptRoot 'Sample_A_Valid'
  $docs=[System.Collections.Generic.List[object]]::new()
  foreach($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.dxf' -File | Sort-Object Name)) {
@@ -116,5 +105,5 @@ Invoke-Case 'All 10 baseline CNC files from stage 2 in a single validated batch'
  Check ($docs.Count -eq 10) 'Expected 10 regression files'
  Verify-Output $docs.ToArray()
 }
-Write-Host "`nStage 3 integration tests: $passed passed, $failed failed." -ForegroundColor $(if($failed -eq 0){'Green'}else{'Red'})
-if ($failed -gt 0) {throw 'Stage 3 tests FAILED'}
+Write-Host "`nOptiCut integration tests: $passed passed, $failed failed." -ForegroundColor $(if($failed -eq 0){'Green'}else{'Red'})
+if ($failed -gt 0) {throw 'OptiCut integration tests failed.'}

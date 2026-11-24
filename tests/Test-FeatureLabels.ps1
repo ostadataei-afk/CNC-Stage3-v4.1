@@ -1,10 +1,5 @@
-# Standalone PowerShell 7 label parser tests. DOES NOT TOUCH Desktop\A or Desktop\B.
-[CmdletBinding()]
-param([string]$ScriptPath = (Join-Path $PSScriptRoot '../Cnc.psm1'))
+# Label parsing, classification, and notch size rules.
 $ErrorActionPreference = 'Stop'
-$culture = [System.Globalization.CultureInfo]::InvariantCulture
-$sizeTolerance = 0.1
-if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw "Script missing: $ScriptPath" }
 Import-Module (Join-Path $PSScriptRoot '../Cnc.psm1') -Force -DisableNameChecking
 $cases = @(
     @{ L='SH'; O=$true; S=$true; Z=$false; Offset=18; Long=66; Short=32 }
@@ -152,5 +147,5 @@ foreach ($zcheck in $zChecks) {
     if ($accepted -eq $zcheck.Accept) { $passed++ }
     else { $failed++; Write-Host "FAILED Z fit: $($zcheck.Label)" -ForegroundColor Red }
 }
-Write-Host "Parser tests: $passed passed, $failed failed. (Source syntax check passed.)" -ForegroundColor $(if ($failed -eq 0) { 'Green' } else { 'Red' })
+Write-Host "Feature label tests: $passed passed, $failed failed." -ForegroundColor $(if ($failed -eq 0) { 'Green' } else { 'Red' })
 if ($failed -gt 0) { throw 'Some label safety tests failed.' }

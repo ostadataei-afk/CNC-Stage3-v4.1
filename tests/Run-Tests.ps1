@@ -1,11 +1,17 @@
 $ErrorActionPreference = 'Stop'
-foreach ($name in @(
-    'Test-Cnc-Safe-Labels-v2.ps1'
-    'Test-Cnc-Geometry-Stage2-v3.1.ps1'
-    'Test-Cnc-OptiCut-Stage3.ps1'
+
+$suites = @(
+    'Test-FeatureLabels.ps1'
+    'Test-Geometry.ps1'
     'Test-Dxf-Integrity.ps1'
+    'Test-OptiCut.ps1'
     'Test-PlanContract.ps1'
     'Test-Preservation.ps1'
-)) {
-    & (Join-Path $PSScriptRoot $name)
+)
+
+foreach ($suite in $suites) {
+    Write-Host "`n=== $suite ===" -ForegroundColor Cyan
+    & (Join-Path $PSScriptRoot $suite)
 }
+
+Write-Host "`nAll $($suites.Count) test suites passed." -ForegroundColor Green
