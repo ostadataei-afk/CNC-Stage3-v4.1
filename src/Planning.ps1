@@ -14,7 +14,14 @@ function Get-FilenamePairRole {
 
 function Resolve-GlobalPairs {
     param([object[]]$Documents)
-    # Documents arrive in the source-file name order (Sort-Object Name).
+    # Output files are named after the input, so the batch must have unique filenames.
+    $fileNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($document in $Documents) {
+        if (-not $fileNames.Add($document.File.Name)) {
+            throw "Duplicate input filename '$($document.File.Name)'; each DXF in a batch must have a unique filename."
+        }
+    }
+
     # Within each file, preserve the original DXF TEXT entity order.
     $candidates = [System.Collections.Generic.List[object]]::new()
     for ($fileOrder = 0; $fileOrder -lt $Documents.Count; $fileOrder++) {
@@ -47,8 +54,11 @@ function Resolve-GlobalPairs {
                 throw "Pair '$($group.Name)': both files claim role '$role0' ('$($members[0].Document.File.Name)' and '$($members[1].Document.File.Name)')."
             }
             # A single explicit marker determines the counterpart's opposite role.
-            # With no explicit markers, use the existing alphabetical filename order.
+            # With no markers, compare names independently of caller order and culture.
             $swap = ($role0 -eq 'L') -or ($role1 -eq 'R')
+            if ($null -eq $role0 -and $null -eq $role1) {
+                $swap = [StringComparer]::OrdinalIgnoreCase.Compare($members[0].Document.File.Name, $members[1].Document.File.Name) -gt 0
+            }
             if ($swap) { $members = @($members[1], $members[0]) }
         }
         $first = $members[0].Record; $second = $members[1].Record

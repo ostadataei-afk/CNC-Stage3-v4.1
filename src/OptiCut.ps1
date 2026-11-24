@@ -41,6 +41,20 @@ function Test-TextAtPartCenter {
             [math]::Abs($y - $centerY) -le $marginY)
 }
 
+function Assert-PlanarDxfEntity {
+    param([object]$Entity)
+    $planarCodes = if ($Entity.Type -eq 'TEXT') { @(30,31,210,220,230) } else { @(30,38,42,210,220,230) }
+    foreach ($pair in $Entity.Pairs) {
+        if ($pair.Code -in $planarCodes) {
+            $expected = if ($pair.Code -eq 230) { 1.0 } else { 0.0 }
+            if ((ConvertFrom-DxfNumber $pair.Value) -ne $expected) {
+                $handle = Get-FirstValue $Entity 5
+                throw "DXF $($Entity.Type) handle '$handle' has unsupported elevation, bulge or extrusion (DXF group $($pair.Code)); CNC geometry and labels must lie in the XY plane."
+            }
+        }
+    }
+}
+
 function Build-DxfPlan {
     param([object]$Document)
     $sizeTolerance = 0.1 # millimetres; original v4.1 tolerance
@@ -68,6 +82,7 @@ function Build-DxfPlan {
         if (-not (Test-RectangleVertices -Points $points -Bounds $bounds)) {
             throw "Candidate outline handle '$((Get-FirstValue $entity 5))' is not a plain axis-aligned four-corner rectangle."
         }
+        Assert-PlanarDxfEntity $entity
         $rectangles.Add([pscustomobject]@{
             Entity = $entity; Handle = (Get-FirstValue $entity 5)
             Points = $points; Layer = $layer
@@ -113,6 +128,7 @@ function Build-DxfPlan {
     if ($parts.Count -eq 0) { throw "No part outlines were detected for OptiCut format '$format'." }
     $dimensionTexts = @($texts | Where-Object { $null -ne $_.Dimension })
     if ($format -eq 'Legacy') {
+        foreach ($text in $dimensionTexts) { Assert-PlanarDxfEntity $text.Entity }
         # Exact stage-2 left-edge dimension matching: both position AND size.
         foreach ($part in $parts) {
             $positionMatches = @($dimensionTexts | Where-Object { Test-TextInsidePart -Text $_ -Shape $part })
@@ -131,6 +147,7 @@ function Build-DxfPlan {
     # these OptiCut exports have NO corresponding dimension TEXT entities.
     $featureTexts = @($texts | Where-Object { $_.IsFeature })
     foreach ($text in $featureTexts) {
+        Assert-PlanarDxfEntity $text.Entity
         $matches = if ($format -eq 'Layered') {
             @($parts | Where-Object { Test-TextAtPartCenter -Text $text -Shape $_ })
         } else {

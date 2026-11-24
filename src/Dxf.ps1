@@ -16,11 +16,14 @@ function Get-FirstValue {
 
 function ConvertFrom-DxfNumber {
     param([string]$Value)
-    return [double]::Parse($Value.Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
+    $number = [double]::Parse($Value.Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
+    if (-not [double]::IsFinite($number)) { throw "Non-finite DXF number '$Value' is not supported." }
+    return $number
 }
 
 function ConvertTo-DxfNumber {
     param([double]$Value)
+    if (-not [double]::IsFinite($Value)) { throw "Non-finite DXF number '$Value' is not supported." }
     return $Value.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
@@ -39,9 +42,79 @@ function Get-EntityVertices {
     return ,$points.ToArray()
 }
 
+function Read-DxfHeader {
+    param([System.IO.TextReader]$Reader)
+    $header = @{}
+    $inHeader = $false
+    $sectionStart = $false
+    $variable = $null
+    while ($null -ne ($codeLine = $Reader.ReadLine())) {
+        $value = $Reader.ReadLine()
+        if ($null -eq $value) { break }
+        $code = 0
+        if (-not [int]::TryParse($codeLine.Trim(), [ref]$code)) { break }
+        $value = $value.Trim()
+        if (-not $inHeader) {
+            if ($sectionStart -and $code -eq 2) {
+                $inHeader = $value -eq 'HEADER'
+            }
+            $sectionStart = $code -eq 0 -and $value -eq 'SECTION'
+        } elseif ($code -eq 0) {
+            break
+        } elseif ($code -eq 9) {
+            $variable = $value
+        } elseif ($variable -and $code -ne 999) {
+            $header[$variable] = $value
+            $variable = $null
+        }
+    }
+    return $header
+}
+
 function Read-DxfDocument {
     param([System.IO.FileInfo]$File)
-    $rawLines = [System.IO.File]::ReadAllLines($File.FullName, [System.Text.Encoding]::UTF8)
+    $stream = [System.IO.File]::OpenRead($File.FullName)
+    try {
+        $hasUtf8Bom = $stream.ReadByte() -eq 0xEF -and $stream.ReadByte() -eq 0xBB -and $stream.ReadByte() -eq 0xBF
+        $start = if ($hasUtf8Bom) { 3L } else { 0L }
+        $stream.Position = $start
+        # DXF header keys and supported codepage names are ASCII even if text data is not.
+        $headerReader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::Latin1, $false, 1024, $true)
+        try { $header = Read-DxfHeader $headerReader }
+        finally { $headerReader.Dispose() }
+        $unitsText = $header['$INSUNITS']
+        $units = 0
+        if ($null -ne $unitsText -and (-not [int]::TryParse($unitsText, [ref]$units) -or $units -notin @(0,4))) {
+            throw "File '$($File.Name)' has unsupported DXF insertion units '$unitsText'; coordinates must be in millimetres."
+        }
+        $version = $header['$ACADVER']
+        $codePage = $header['$DWGCODEPAGE']
+        $modernVersion = $version -match '^AC([0-9]{4})$' -and [int]$Matches[1] -ge 1021
+        if ($hasUtf8Bom -and $version -and -not $modernVersion) {
+            throw "File '$($File.Name)' has a UTF-8 BOM with older DXF version '$version'."
+        }
+        $encoding = if ($hasUtf8Bom -or $modernVersion) {
+            [System.Text.UTF8Encoding]::new($hasUtf8Bom, $true)
+        } else {
+            $codePageNumber = 20127 # ASCII when no legacy codepage is declared.
+            if ($codePage -and $codePage -ne 'ANSI_20127') {
+                if ($codePage -notmatch '^ANSI_(874|932|936|949|950|125[0-8])$') {
+                    throw "File '$($File.Name)' has unsupported legacy DXF codepage '$codePage'."
+                }
+                $codePageNumber = [int]$Matches[1]
+                [System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance)
+            }
+            [System.Text.Encoding]::GetEncoding($codePageNumber, [System.Text.EncoderFallback]::ExceptionFallback, [System.Text.DecoderFallback]::ExceptionFallback)
+        }
+        $stream.Position = $start
+        $reader = [System.IO.StreamReader]::new($stream, $encoding, $false, 1024, $true)
+        try {
+            $rawLines = [System.Collections.Generic.List[string]]::new()
+            while ($null -ne ($line = $reader.ReadLine())) { $rawLines.Add($line) }
+        } catch [System.Text.DecoderFallbackException] {
+            throw "File '$($File.Name)' contains text that cannot be decoded as $($encoding.WebName)."
+        } finally { $reader.Dispose() }
+    } finally { $stream.Dispose() }
     if (($rawLines.Count % 2) -ne 0) { throw 'DXF has an odd number of group-code/value lines.' }
     $pairs = [System.Collections.Generic.List[object]]::new()
     for ($i = 0; $i -lt $rawLines.Count; $i += 2) {
@@ -69,7 +142,7 @@ function Read-DxfDocument {
         } elseif ($null -ne $current) { $current.Pairs.Add($pair) }
     }
     if ($null -ne $current) { $entities.Add($current) }
-    return [pscustomobject]@{ File = $File; Pairs = $pairs; EntityBodyStart = $entityBodyStart; EntityBodyEnd = $entityBodyEnd; Entities = $entities; Parts = @(); FeatureRecords = @(); Stats = $null }
+    return [pscustomobject]@{ File = $File; Encoding = $encoding; Pairs = $pairs; EntityBodyStart = $entityBodyStart; EntityBodyEnd = $entityBodyEnd; Entities = $entities; Parts = @(); FeatureRecords = @(); Stats = $null }
 }
 
 function Get-TextRecords {
@@ -86,11 +159,7 @@ function Get-TextRecords {
             catch { throw "TEXT '$value' has invalid insertion coordinates." }
         }
         $dim = Get-DimensionText $value
-        # Non-feature annotation TEXT is ignored.  SH/Z must begin a token
-        # (optionally after a numeric prefix) to be treated as an instruction.
-        $candidate = ($null -eq $dim) -and (Test-FeatureLabelCandidate -Label $value)
-        $parsed = $null
-        if ($candidate) { $parsed = Parse-FeatureLabel -Label $value }
+        $parsed = if ($null -eq $dim) { Read-FeatureLabel -Label $value }
         $isFeature = $null -ne $parsed
         if ($isFeature -and ($null -eq $x -or $null -eq $y)) {
             throw "Feature label '$value' has no valid insertion point (codes 10/20)."
@@ -197,7 +266,7 @@ function Set-PolylineVertices {
             $code = [int]$old[$j].Code
             if ($code -in @(30,40,41,42)) {
                 $number = 0.0
-                if (-not [double]::TryParse(([string]$old[$j].Value).Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$number)) { throw "Invalid per-vertex value (group $code)." }
+                if (-not [double]::TryParse(([string]$old[$j].Value).Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$number) -or -not [double]::IsFinite($number)) { throw "Invalid per-vertex value (group $code)." }
                 if ([math]::Abs($number) -gt 0.0000001) { if ($code -eq 30) { throw 'Target outline has non-zero vertex Z values.' }; throw "Target outline has non-zero width/bulge data (group $code); refusing to alter geometry." }
                 continue
             }

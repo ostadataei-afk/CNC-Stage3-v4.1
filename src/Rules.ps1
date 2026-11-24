@@ -10,100 +10,85 @@ function Get-DimensionText {
 
 function Parse-FeatureLabel {
     param([string]$Label)
-    # A free-form name may precede the first _/- separator. The command zone
-    # then contains one or two SH/Z commands, separated by _, -, or whitespace.
-    # Spaces around separators and between a command and its numeric argument
-    # are ignored. Parse the complete command zone to reject malformed tokens.
-    $name = $Label.Trim()
-    $number = '[0-9]+(?:[.,][0-9]+)?'
-    $spacedShPrefix = '(?i)(^|[_-])(' + $number + ')[ \t]+(SH)(?=[ \t]*(?:$|[0-9.,]))'
-    $shPattern = '^(?:(?<prefix>' + $number + '))?SH(?:(?<offset>' + $number + '))?$'
-    $zPattern = '^(?:(?<long>' + $number + '))?Z(?:(?<short>' + $number + '))?$'
-    $commandPattern = '^(?:(?:' + $number + ')?SH(?:' + $number + ')?|(?:' + $number + ')?Z(?:' + $number + ')?)$'
-    $firstSeparator = [regex]::Match($name, '[_-]')
-    if ($firstSeparator.Success) {
-        $leading = $name.Substring(0, $firstSeparator.Index).Trim()
-        $remainder = $name.Substring($firstSeparator.Index)
-        $normalizedLeading = [regex]::Replace($leading, $spacedShPrefix, '$1$2$3')
-        $normalizedLeading = [regex]::Replace($normalizedLeading, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
-        $leadingLooksLikeCommand = $normalizedLeading -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
-            $normalizedLeading -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])'
-        if ($leading -and $normalizedLeading -notmatch $commandPattern -and -not $leadingLooksLikeCommand) {
-            $identifier = $leading
-            $commands = $remainder.Substring(1)
-        } else {
-            $identifier = $null
-            $commands = if (-not $leading) { $name.Substring(1) } else { $name }
-        }
-    } else {
-        $identifier = $null
-        $commands = $name
-    }
-    # A leading separator represents an intentionally empty name. Normalize
-    # whitespace around punctuation separators, then preserve empty fields so
-    # repeated/trailing punctuation remains an error.
-    $commands = [regex]::Replace($commands, '[ \t]*([_-])[ \t]*', '$1')
-    $commands = [regex]::Replace($commands, $spacedShPrefix, '$1$2$3')
-    $commands = [regex]::Replace($commands, '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
-    $tokens = @($commands -split '[_-]' | ForEach-Object { $_.Trim() } | ForEach-Object { if ($_ -match '\s') { $_ -split '\s+' } else { $_ } })
-    $hasSH = $false; $hasZ = $false
-    $prefix = $null; $offset = 18.0; $long = 66.0; $short = 32.0
-
-    for ($i = 0; $i -lt $tokens.Count; $i++) {
-        $token = [string]$tokens[$i]
-        if ([string]::IsNullOrWhiteSpace($token)) {
-            throw "Invalid feature label '$Label': an empty token or repeated separator is not allowed."
-        }
-        $sh = [regex]::Match($token, $shPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        $z = [regex]::Match($token, $zPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        if ($sh.Success) {
-            if ($hasSH) { throw "Invalid feature label '$Label': SH appears more than once." }
-            $hasSH = $true
-            if ($sh.Groups['prefix'].Success) { $prefix = [double]::Parse($sh.Groups['prefix'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-            if ($sh.Groups['offset'].Success) { $offset = [double]::Parse($sh.Groups['offset'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-        } elseif ($z.Success) {
-            if ($hasZ) { throw "Invalid feature label '$Label': Z appears more than once." }
-            $hasZ = $true
-            if ($z.Groups['long'].Success) { $long = [double]::Parse($z.Groups['long'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-            if ($z.Groups['short'].Success) { $short = [double]::Parse($z.Groups['short'].Value.Replace(',','.'), [System.Globalization.CultureInfo]::InvariantCulture) }
-        } else {
-            throw "Invalid feature label '$Label': unsupported or malformed token '$token'."
-        }
-    }
-    if (-not ($hasSH -or $hasZ)) { throw "Invalid feature label '$Label': neither SH nor Z was found." }
-    if ($null -ne $prefix -and ($prefix -le 0 -or [double]::IsNaN($prefix) -or [double]::IsInfinity($prefix))) {
-        throw "Invalid feature label '$Label': SH dimensional prefix must be positive and finite."
-    }
-    if ($hasSH -and ($offset -le 0 -or [double]::IsNaN($offset) -or [double]::IsInfinity($offset))) {
-        throw "Invalid feature label '$Label': SH offset must be positive and finite."
-    }
-    if ($hasZ -and ($long -le 0 -or $short -le 0 -or [double]::IsNaN($long) -or [double]::IsInfinity($long) -or [double]::IsNaN($short) -or [double]::IsInfinity($short))) {
-        throw "Invalid feature label '$Label': both Z lengths must be positive and finite."
-    }
-    return [pscustomobject]@{
-        HasSH = $hasSH; HasZ = $hasZ; Identifier = $identifier
-        Prefix = $prefix; GrooveOffset = $offset
-        LongLength = $long; ShortLength = $short
-    }
+    $parsed = Read-FeatureLabel -Label $Label
+    if ($null -eq $parsed) { throw "Invalid feature label '$Label': neither SH nor Z was found." }
+    return $parsed
 }
 
-function Test-FeatureLabelCandidate {
+function Read-FeatureLabel {
     param([string]$Label)
-    # Name text is free-form; only a command-shaped token in the command zone
-    # makes the label a candidate. This keeps ordinary WASH/SHABC annotations
-    # ignored while allowing names such as SHABRANG_SH.
-    $value = [regex]::Replace($Label.Trim(), '(?i)(SH|Z)[ \t]+(?=[0-9.,])', '$1')
-    $value = [regex]::Replace($value, '(?i)(^|[_-])([0-9]+(?:[.,][0-9]+)?)[ \t]+(SH)(?=[ \t]*(?:$|[0-9.,]))', '$1$2$3')
-    $firstSeparator = [regex]::Match($value, '[_-]')
-    $commandZone = if ($firstSeparator.Success) { $value.Substring($firstSeparator.Index + 1) } else { $value }
-    $tokens = @($commandZone -split '[_\-\s]+' | ForEach-Object { $_.Trim() })
-    foreach ($token in $tokens) {
-        if ($token -match '^(?:[0-9.,]*)SH(?:$|[0-9.,])' -or
-            $token -match '^(?:[0-9.,]*)Z(?:$|[0-9.,])') {
-            return $true
+    # A label can have a name before the first punctuation separator. If the
+    # first field begins like a command, preserve it even when it is malformed.
+    $segments = @($Label.Trim() -split '[_-]' | ForEach-Object { $_.Trim() })
+    $marker = '(?:[+0-9.,]+\s*)?(?:SH|Z)(?=$|[\s+0-9.,]|(?:SH|Z)(?:$|[\s+0-9.,]))'
+    $identifier = $null
+    if ($segments.Count -gt 1 -and $segments[0] -notmatch ('^' + $marker)) {
+        if ($segments[0]) { $identifier = $segments[0] }
+        $segments = $segments[1..($segments.Count - 1)]
+    }
+    if (($segments -join ' ') -notmatch ('(?:^|\s)' + $marker)) { return $null }
+
+    if ($segments -contains '') {
+        throw "Invalid feature label '$Label': an empty token or repeated separator is not allowed."
+    }
+    # Punctuation always separates commands. Spaces can separate commands
+    # or bind an adjacent number, so check each possible boundary.
+    $commandSets = [System.Collections.Generic.List[string[]]]::new()
+    if ($segments.Count -le 2) { $commandSets.Add($segments) }
+    if ($segments.Count -eq 1) {
+        $segment = $segments[0]
+        foreach ($boundary in [regex]::Matches($segment, '\s+')) {
+            $commandSets.Add(@($segment.Substring(0, $boundary.Index), $segment.Substring($boundary.Index + $boundary.Length)))
         }
     }
-    return $false
+    $number = '[0-9]+(?:[.,][0-9]+)?'
+    $command = [regex]('(?i)^(?:(?<before>' + $number + ')\s*)?(?<operation>SH|Z)(?:\s*(?<after>' + $number + '))?$')
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $parsed = $null
+    $firstSpelling = $null
+    $hasInvalidNumber = $false
+    foreach ($commands in $commandSets) {
+        $commandMatches = @($commands | ForEach-Object { $command.Match($_) })
+        if ($commandMatches.Success -contains $false) { continue }
+        if ($commandMatches.Count -eq 2 -and $commandMatches[0].Groups['operation'].Value -ieq $commandMatches[1].Groups['operation'].Value) { continue }
+
+        $result = [pscustomobject]@{
+            HasSH = $false; HasZ = $false; Identifier = $identifier
+            Prefix = $null; GrooveOffset = 18.0
+            LongLength = 66.0; ShortLength = 32.0
+        }
+        $valid = $true
+        foreach ($match in $commandMatches) {
+            $before = if ($match.Groups['before'].Success) { [double]::Parse($match.Groups['before'].Value.Replace(',', '.'), $culture) }
+            $after = if ($match.Groups['after'].Success) { [double]::Parse($match.Groups['after'].Value.Replace(',', '.'), $culture) }
+            if (($null -ne $before -and ($before -le 0 -or -not [double]::IsFinite($before))) -or
+                ($null -ne $after -and ($after -le 0 -or -not [double]::IsFinite($after)))) {
+                $hasInvalidNumber = $true
+                $valid = $false
+                break
+            }
+            if ($match.Groups['operation'].Value -ieq 'SH') {
+                $result.HasSH = $true
+                $result.Prefix = $before
+                if ($null -ne $after) { $result.GrooveOffset = $after }
+            } else {
+                $result.HasZ = $true
+                if ($null -ne $before) { $result.LongLength = $before }
+                if ($null -ne $after) { $result.ShortLength = $after }
+            }
+        }
+        if (-not $valid) { continue }
+        $spelling = ($commands -replace '\s+', '') -join '_'
+        if ($identifier) { $spelling = "${identifier}_$spelling" }
+        if ($null -ne $parsed) {
+            throw "Invalid feature label '$Label': ambiguous spacing; write '$firstSpelling' or '$spelling' to specify the intended commands."
+        }
+        $firstSpelling = $spelling
+        $parsed = $result
+    }
+    if ($null -ne $parsed) { return $parsed }
+    if ($hasInvalidNumber) { throw "Invalid feature label '$Label': command parameters must be positive and finite." }
+    throw "Invalid feature label '$Label': expected one SH or Z command, or one of each."
 }
 
 function Get-Orientation {

@@ -1,23 +1,149 @@
+function Resolve-CncDirectoryPath {
+    param([string]$Path)
+
+    $provider = $null
+    $drive = $null
+    $filePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+        $Path, [ref]$provider, [ref]$drive)
+    if ($provider.Name -ne 'FileSystem') { throw "Not a filesystem directory: '$Path'." }
+    return [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($filePath))
+}
+
+function Assert-CncDirectoryPath {
+    param([string]$Path)
+
+    for ($directory = [IO.DirectoryInfo]::new($Path); $null -ne $directory; $directory = $directory.Parent) {
+        try { $item = Get-Item -LiteralPath $directory.FullName -Force -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException] { continue }
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Unsafe filesystem path: '$($directory.FullName)' is a symbolic link, junction, or other reparse point."
+        }
+        if (-not $item.PSIsContainer) { throw "Not a filesystem directory: '$($directory.FullName)'." }
+    }
+}
+
+function Move-CncOutputDirectory {
+    param([string]$From, [string]$To)
+
+    [IO.Directory]::Move($From, $To)
+}
+
+function Remove-CncWorkDirectory {
+    param([string]$Path)
+
+    try {
+        Assert-CncDirectoryPath $Path
+        if ([IO.Directory]::Exists($Path)) {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        }
+    } catch { Write-Warning "Could not remove temporary directory '$Path': $($_.Exception.Message)" }
+}
+
+function Assert-CncOutputOwnership {
+    param([string]$Path)
+
+    $existingItem = Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1
+    if ($null -eq $existingItem) { return }
+    $markerPath = Join-Path $Path '.cnc-output'
+    $marker = Get-Item -LiteralPath $markerPath -Force -ErrorAction SilentlyContinue
+    if ($null -eq $marker -or $marker.PSIsContainer -or
+        ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        [IO.File]::ReadAllText($markerPath) -cne 'CNC-Stage3 managed output v1') {
+        throw "Output directory '$Path' is nonempty and is not managed by CNC. Use an empty directory or specify -ReplaceExistingOutput to replace it."
+    }
+}
+
+function Publish-CncBatch {
+    param([string]$OutputFolder, [object[]]$Generated, [switch]$ReplaceExistingOutput)
+
+    $parent = [IO.Path]::GetDirectoryName($OutputFolder)
+    $name = [IO.Path]::GetFileName($OutputFolder)
+    if ($IsWindows) { $name = $name.ToUpperInvariant() }
+    $nameHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($name)))
+    $prefix = '.cnc-' + $nameHash.Substring(0, 16)
+    $token = [guid]::NewGuid().ToString('N')
+    $lockPath = Join-Path $parent "$prefix.lock"
+    $stageFolder = Join-Path $parent "$prefix-$token.stage"
+    $backupFolder = Join-Path $parent "$prefix-$token.backup"
+
+    Assert-CncDirectoryPath $OutputFolder
+    [void][IO.Directory]::CreateDirectory($parent)
+    Assert-CncDirectoryPath $OutputFolder
+    try {
+        $lock = [IO.FileStream]::new($lockPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite,
+            [IO.FileShare]::None, 4096, [IO.FileOptions]::DeleteOnClose)
+    } catch {
+        throw "Could not lock output '$OutputFolder'. Check '$lockPath' and retry after any active generation finishes. $($_.Exception.Message)"
+    }
+
+    $stageCreated = $false
+    try {
+        $leftoverBackups = @(Get-ChildItem -LiteralPath $parent -Force -Filter "$prefix-*.backup")
+        if ($leftoverBackups.Count -gt 0) {
+            $paths = $leftoverBackups.FullName -join ', '
+            throw "Recover or move the previous output backup before publishing to '$OutputFolder': $paths"
+        }
+        Assert-CncDirectoryPath $OutputFolder
+        $hadOutput = [IO.Directory]::Exists($OutputFolder)
+        if ($hadOutput -and -not $ReplaceExistingOutput) { Assert-CncOutputOwnership $OutputFolder }
+        [void](New-Item -ItemType Directory -Path $stageFolder)
+        $stageCreated = $true
+        foreach ($item in $Generated) {
+            $stagePath = Join-Path $stageFolder $item.OutputName
+            Write-CncDxfOutput -Item $item -Path $stagePath
+            [void](Test-GeneratedDxf -File (Get-Item -LiteralPath $stagePath) -Plan $item)
+        }
+        $stageMarker = Join-Path $stageFolder '.cnc-output'
+        [IO.File]::WriteAllText($stageMarker, 'CNC-Stage3 managed output v1')
+        if ($IsWindows) { [IO.File]::SetAttributes($stageMarker, [IO.FileAttributes]::Hidden) }
+
+        Assert-CncDirectoryPath $OutputFolder
+        if ($hadOutput) {
+            if (-not $ReplaceExistingOutput) { Assert-CncOutputOwnership $OutputFolder }
+            Move-CncOutputDirectory -From $OutputFolder -To $backupFolder
+        }
+        try {
+            Move-CncOutputDirectory -From $stageFolder -To $OutputFolder
+            $stageCreated = $false
+        } catch {
+            $publishError = $_.Exception.Message
+            if (-not $hadOutput) { throw "Could not publish output to '$OutputFolder': $publishError" }
+            try { Move-CncOutputDirectory -From $backupFolder -To $OutputFolder }
+            catch {
+                throw "Could not restore '$OutputFolder'. Previous output remains at '$backupFolder'. Publish error: $publishError. Restore error: $($_.Exception.Message)"
+            }
+            throw "Could not publish output to '$OutputFolder'. Previous output was restored. $publishError"
+        }
+        if ($hadOutput) { Remove-CncWorkDirectory $backupFolder }
+    } finally {
+        try {
+            if ($stageCreated) { Remove-CncWorkDirectory $stageFolder }
+        } finally { $lock.Dispose() }
+    }
+}
+
 function Invoke-CncBatch {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$SourceFolder,
         [Parameter(Mandatory)][string]$OutputFolder,
-        [switch]$ValidateOnly
+        [switch]$ValidateOnly,
+        [switch]$ReplaceExistingOutput
     )
     $ErrorActionPreference = 'Stop'
+    $SourceFolder = Resolve-CncDirectoryPath $SourceFolder
+    $OutputFolder = Resolve-CncDirectoryPath $OutputFolder
     $desktop = [Environment]::GetFolderPath('Desktop')
-    $inputPath = [IO.Path]::GetFullPath($SourceFolder).TrimEnd('\','/')
-    $outputPath = [IO.Path]::GetFullPath($OutputFolder).TrimEnd('\','/')
-    $rootPath = [IO.Path]::GetPathRoot($outputPath).TrimEnd('\','/')
-    if ($outputPath -ieq $rootPath -or $outputPath -ieq $inputPath -or
-        $inputPath.StartsWith($outputPath + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Unsafe output path: output must not be a drive root, the input folder, or its ancestor.'
+    $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    $rootPath = [IO.Path]::GetPathRoot($OutputFolder)
+    $outputPrefix = $OutputFolder + [IO.Path]::DirectorySeparatorChar
+    if ($OutputFolder.Equals([IO.Path]::TrimEndingDirectorySeparator($rootPath), $comparison) -or
+        $SourceFolder.Equals($OutputFolder, $comparison) -or $SourceFolder.StartsWith($outputPrefix, $comparison) -or
+        ($desktop -and ($desktop.Equals($OutputFolder, $comparison) -or $desktop.StartsWith($outputPrefix, $comparison)))) {
+        throw 'Unsafe output path: output must not be a filesystem root, the input folder, Desktop, or an ancestor of these folders.'
     }
-    if ((Test-Path -LiteralPath $OutputFolder) -and
-        ((Get-Item -LiteralPath $OutputFolder).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-        throw 'Unsafe output path: output must not be a symbolic link or junction.'
-    }
+    Assert-CncDirectoryPath $SourceFolder
+    Assert-CncDirectoryPath $OutputFolder
 try {
     Write-Host ''
     Write-Host '=== Independent DXF Generator for CNC Parts ===' -ForegroundColor Cyan
@@ -84,76 +210,24 @@ try {
     }
     if ($ValidateOnly) {
         $verifyFolder = Join-Path ([System.IO.Path]::GetTempPath()) ('.dxf-verify-' + [guid]::NewGuid().ToString('N'))
+        $verifyCreated = $false
         try {
             [void](New-Item -ItemType Directory -Path $verifyFolder)
+            $verifyCreated = $true
             foreach ($item in $generated) {
                 $verifyPath = Join-Path $verifyFolder $item.OutputName
-                [System.IO.File]::WriteAllLines($verifyPath, $item.Lines, [System.Text.UTF8Encoding]::new($false))
+                Write-CncDxfOutput -Item $item -Path $verifyPath
                 [void](Test-GeneratedDxf -File (Get-Item -LiteralPath $verifyPath) -Plan $item)
             }
         } finally {
-            if (Test-Path -LiteralPath $verifyFolder) { Remove-Item -LiteralPath $verifyFolder -Recurse -Force -ErrorAction SilentlyContinue }
+            if ($verifyCreated) { Remove-CncWorkDirectory $verifyFolder }
         }
         Write-Host "`nValidation, in-memory generation, and DXF round-trip verification succeeded; no files were written to B because ValidateOnly was specified." -ForegroundColor Green
         foreach ($item in $generated) { Write-Host "  $($item.Source.Name): handle notches $($item.NotchCount), groove lines $($item.SlotCount), DXF round-trip verification: passed" -ForegroundColor Green }
         return
     }
 
-    # Before writing a new batch, clear ALL previous contents of B (including subfolders).
-    # This intentionally runs only in normal mode, never with -ValidateOnly.
-    $inputAbsolute = [System.IO.Path]::GetFullPath($sourceFolder).TrimEnd([char[]]@('\','/'))
-    $outputAbsolute = [System.IO.Path]::GetFullPath($outputFolder).TrimEnd([char[]]@('\','/'))
-    $desktopAbsolute = [System.IO.Path]::GetFullPath($desktop).TrimEnd([char[]]@('\','/'))
-    if ($outputAbsolute -ieq $inputAbsolute -or $outputAbsolute -ieq $desktopAbsolute) {
-        throw 'Unsafe output path: refusing to clear the input folder or Desktop.'
-    }
-    if (-not (Test-Path -LiteralPath $outputFolder -PathType Container)) { [void](New-Item -ItemType Directory -Path $outputFolder) }
-    $previousItems = @(Get-ChildItem -LiteralPath $outputFolder -Force)
-    if ($previousItems.Count -gt 0) {
-        Write-Host "`nClearing folder B: $($previousItems.Count) old item(s)..." -ForegroundColor Yellow
-        foreach ($previousItem in $previousItems) {
-            Remove-Item -LiteralPath $previousItem.FullName -Recurse -Force -ErrorAction Stop
-        }
-    }
-
-    # Stage every output before replacing anything. If commit fails, backups are restored.
-    $token = [guid]::NewGuid().ToString('N')
-    $stageFolder = Join-Path $outputFolder ".dxf-stage-$token"
-    $backupFolder = Join-Path $outputFolder ".dxf-backup-$token"
-    [void](New-Item -ItemType Directory -Path $stageFolder)
-    [void](New-Item -ItemType Directory -Path $backupFolder)
-    $backedUp = [System.Collections.Generic.List[string]]::new(); $installed = [System.Collections.Generic.List[string]]::new(); $preserveBackup = $false
-    try {
-        foreach ($item in $generated) {
-            $stagePath = Join-Path $stageFolder $item.OutputName
-            [System.IO.File]::WriteAllLines($stagePath, $item.Lines, [System.Text.UTF8Encoding]::new($false))
-        }
-        foreach ($item in $generated) {
-            $stagePath = Join-Path $stageFolder $item.OutputName
-            [void](Test-GeneratedDxf -File (Get-Item -LiteralPath $stagePath) -Plan $item)
-        }
-        foreach ($item in $generated) {
-            $target = Join-Path $outputFolder $item.OutputName
-            $backup = Join-Path $backupFolder $item.OutputName
-            if (Test-Path -LiteralPath $target -PathType Leaf) { [System.IO.File]::Move($target, $backup); $backedUp.Add($target) }
-            [System.IO.File]::Move((Join-Path $stageFolder $item.OutputName), $target)
-            $installed.Add($target)
-        }
-    } catch {
-        $commitError = $_.Exception.Message
-        foreach ($target in $installed) { if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue } }
-        foreach ($target in $backedUp) {
-            $backup = Join-Path $backupFolder ([System.IO.Path]::GetFileName($target))
-            if (Test-Path -LiteralPath $backup -PathType Leaf) {
-                try { [System.IO.File]::Move($backup, $target) }
-                catch { $preserveBackup = $true; Write-Host "Automatic restore failed; backup preserved at: $backupFolder" -ForegroundColor Red }
-            }
-        }
-        throw "Failed to write output files; previous outputs were restored or backups were preserved for manual recovery. Details: $commitError"
-    } finally {
-        if (Test-Path -LiteralPath $stageFolder) { Remove-Item -LiteralPath $stageFolder -Recurse -Force -ErrorAction SilentlyContinue }
-        if (-not $preserveBackup -and (Test-Path -LiteralPath $backupFolder)) { Remove-Item -LiteralPath $backupFolder -Recurse -Force -ErrorAction SilentlyContinue }
-    }
+    Publish-CncBatch -OutputFolder $OutputFolder -Generated $generated.ToArray() -ReplaceExistingOutput:$ReplaceExistingOutput
     Write-Host "`n=== Generation Successful ===" -ForegroundColor Green
     foreach ($item in $generated) {
         Write-Host "  $($item.Source.Name) -> $(Join-Path $outputFolder $item.OutputName) | Parts: $($item.Stats.PartCount) | Handle notches: $($item.NotchCount) | Groove lines: $($item.SlotCount)" -ForegroundColor Green

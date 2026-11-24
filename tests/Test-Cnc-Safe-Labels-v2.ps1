@@ -32,6 +32,14 @@ $cases = @(
     @{ L='300 SH 25'; O=$true; S=$true; Z=$false; Offset=25; Long=66; Short=32; Prefix=300 }
     @{ L='300 SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32; Prefix=300; Identifier=$null }
     @{ L='Name_300 SH 25-Z'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32; Prefix=300; Identifier='Name' }
+    @{ L='300 SH Z'; O=$true; S=$true; Z=$true; Offset=18; Long=66; Short=32; Prefix=300 }
+    @{ L='SH 80Z40'; O=$true; S=$true; Z=$true; Offset=18; Long=80; Short=40 }
+    @{ L='Name_Z 300SH25'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32; Prefix=300 }
+    @{ L='80 Z 40'; O=$true; S=$false; Z=$true; Offset=18; Long=80; Short=40 }
+    @{ L='Name_Z_300SH25'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=32; Prefix=300 }
+    @{ L='Name_Z300_SH25'; O=$true; S=$true; Z=$true; Offset=25; Long=66; Short=300 }
+    @{ L='Name_Z 300 SH 25'; O=$false; Error='ambiguous spacing'; Alternatives=@('Name_Z_300SH25','Name_Z300_SH25') }
+    @{ L='SH 80 Z40'; O=$false; Error='ambiguous spacing' }
     @{ L='Zir _ SH 100 _ Z'; O=$true; S=$true; Z=$true; Offset=100; Long=66; Short=32 }
     @{ L='Zir_shab_Z'; O=$false }
     @{ L='01_SH100'; O=$true; S=$true; Z=$false; Offset=100; Long=66; Short=32 }
@@ -79,6 +87,8 @@ foreach ($c in $cases) {
     $errorText = $null; $got = $null
     try { $got = Parse-FeatureLabel -Label $c.L } catch { $errorText = $_.Exception.Message }
     $ok = ($c.O -eq ($null -ne $got))
+    if ($c.ContainsKey('Error')) { $ok = $ok -and $errorText -like "*$($c.Error)*" }
+    foreach ($example in $c.Alternatives) { $ok = $ok -and $errorText.Contains($example) }
     if ($ok -and $null -ne $got) {
         $ok = $got.HasSH -eq $c.S -and $got.HasZ -eq $c.Z
         $ok = $ok -and [math]::Abs($got.GrooveOffset - $c.Offset) -lt 0.00001
@@ -89,6 +99,40 @@ foreach ($c in $cases) {
         if ($c.ContainsKey('Identifier')) { $ok = $ok -and $got.Identifier -ceq $c.Identifier }
     }
     if ($ok) { $passed++ } else { $failed++; Write-Host "FAILED: $($c.L), expected valid=$($c.O), observed=$($null -ne $got), error=$errorText" -ForegroundColor Red }
+}
+$textCases = @(
+    @{ Label='WASH'; IsFeature=$false }
+    @{ Label='SHABC'; IsFeature=$false }
+    @{ Label='SHABC_Z'; IsFeature=$true; HasSH=$false; HasZ=$true }
+    @{ Label='300 SH 25-Z'; IsFeature=$true; HasSH=$true; HasZ=$true }
+    @{ Label='SH25-foo'; Error='Invalid feature label' }
+    @{ Label='SH-'; Error='Invalid feature label' }
+    @{ Label='SH-25'; Error='Invalid feature label' }
+    @{ Label='SH+25'; Error='Invalid feature label' }
+    @{ Label='SH+25-Z40'; Error='Invalid feature label' }
+    @{ Label='Name_SH+25'; Error='Invalid feature label' }
+    @{ Label='Name_SHZ'; Error='Invalid feature label' }
+    @{ Label='SH Z - TMP'; Error='Invalid feature label' }
+    @{ Label='Name_Z 300 SH 25'; Error='ambiguous spacing' }
+)
+foreach ($case in $textCases) {
+    $entity = [pscustomobject]@{
+        Type = 'TEXT'
+        SourceIndex = 0
+        Pairs = @((New-DxfPair 1 $case.Label), (New-DxfPair 10 '20'), (New-DxfPair 20 '30'))
+    }
+    $errorText = $null
+    $records = @()
+    try { $records = Get-TextRecords -Document ([pscustomobject]@{ Entities = @($entity) }) }
+    catch { $errorText = $_.Exception.Message }
+    $ok = if ($case.ContainsKey('Error')) {
+        $errorText -like "*$($case.Error)*"
+    } else {
+        $null -eq $errorText -and $records.Count -eq 1 -and $records[0].IsFeature -eq $case.IsFeature -and
+            (-not $case.IsFeature -or ($records[0].HasSH -eq $case.HasSH -and $records[0].HasZ -eq $case.HasZ))
+    }
+    if ($ok) { $passed++ }
+    else { $failed++; Write-Host "FAILED TEXT classification: $($case.Label), error=$errorText" -ForegroundColor Red }
 }
 $shape = [pscustomobject]@{ Width = 300.0; Height = 800.0 }
 $zChecks = @(

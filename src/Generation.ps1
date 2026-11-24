@@ -25,6 +25,9 @@ function Apply-DxfPlan {
     }
     $finalPairs = [System.Collections.Generic.List[object]]::new()
     for ($i = 0; $i -lt $Document.EntityBodyStart; $i++) { $finalPairs.Add($Document.Pairs[$i]) }
+    for ($i = $Document.EntityBodyStart; $i -lt $Document.EntityBodyEnd -and $Document.Pairs[$i].Code -ne 0; $i++) {
+        $finalPairs.Add($Document.Pairs[$i])
+    }
     foreach ($entity in $Document.Entities) { foreach ($pair in $entity.Pairs) { $finalPairs.Add($pair) } }
     for ($i = $Document.EntityBodyEnd; $i -lt $Document.Pairs.Count; $i++) { $finalPairs.Add($Document.Pairs[$i]) }
     if (-not $layer2Exists) { Add-Layer2 -Pairs $finalPairs -Handle $layerHandle }
@@ -32,6 +35,11 @@ function Apply-DxfPlan {
     $lines = [System.Collections.Generic.List[string]]::new()
     foreach ($pair in $finalPairs) { $lines.Add([string]$pair.CodeText); $lines.Add([string]$pair.Value) }
     return [pscustomobject]@{ Source = $Document.File; OutputName = $Document.File.Name; Lines = $lines.ToArray(); NotchCount = $notchCount; SlotCount = $slotCount; Stats = $Document.Stats; Document = $Document; SourceEntityCount = $sourceEntityCount; SourceEntityHandles = $sourceEntityHandles; SlotEntities = $slotEntities.ToArray() }
+}
+
+function Write-CncDxfOutput {
+    param([object]$Item, [string]$Path)
+    [System.IO.File]::WriteAllLines($Path, $Item.Lines, $Item.Document.Encoding)
 }
 
 function Test-GeneratedDxf {
@@ -70,6 +78,15 @@ function Test-GeneratedDxf {
             $actualValue = Get-FirstValue $matches[0] $code
             if ($null -eq $expectedValue -or $null -eq $actualValue) { throw "Round-trip verification failed: groove line '$handle' is missing coordinate code $code." }
             if ([math]::Abs((ConvertFrom-DxfNumber $expectedValue) - (ConvertFrom-DxfNumber $actualValue)) -gt 0.001) { throw "Round-trip verification failed: groove line '$handle' coordinate code $code changed." }
+        }
+    }
+    if ($parsed.Pairs.Count * 2 -ne $Plan.Lines.Count) {
+        throw "Round-trip verification failed for '$($File.Name)': serialized group count changed."
+    }
+    for ($i = 0; $i -lt $parsed.Pairs.Count; $i++) {
+        if ($parsed.Pairs[$i].Code -ne [int]$Plan.Lines[2 * $i] -or
+            $parsed.Pairs[$i].Value -cne $Plan.Lines[2 * $i + 1]) {
+            throw "Round-trip verification failed for '$($File.Name)': serialized group changed at line $((2 * $i) + 1)."
         }
     }
     return $true

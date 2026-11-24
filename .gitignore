@@ -1,6 +1,12 @@
 # CNC OptiCut modular project
+/.playwright-mcp/
+/A/
+/PowerShell/download-metadata.json
 PowerShell/7/
 tmp/
 Output/
+.cnc-*.stage/
+.cnc-*.backup/
+.cnc-*.lock
 *.bak
 *.tmp
