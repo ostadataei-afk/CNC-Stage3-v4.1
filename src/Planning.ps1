@@ -28,7 +28,9 @@ function Resolve-GlobalPairs {
     $candidates = [System.Collections.Generic.List[object]]::new()
     foreach ($document in $Documents) {
         foreach ($record in $document.FeatureRecords) {
-            if (-not ($record.HasSH -and $record.HasZ)) { continue }
+            if (-not ($record.HasSH -and $record.HasZ)) {
+                continue
+            }
             $candidates.Add([pscustomobject]@{
                 Label = $record.Label
                 Document = $document
@@ -41,7 +43,10 @@ function Resolve-GlobalPairs {
     foreach ($group in $pairGroups) {
         if ($group.Count -lt 2 -or ($group.Count % 2) -ne 0) {
             $sources = (@($group.Group | ForEach-Object { $_.Document.File.Name } | Sort-Object -Unique) -join ', ')
-            throw "Label '$($group.Name)' contains SH and Z and must occur an even number of times (at least twice) across folder A; found $($group.Count) in file(s): $sources."
+            throw (
+                "Label '$($group.Name)' contains SH and Z and must occur an even number of times " +
+                "(at least twice) across folder A; found $($group.Count) in file(s): $sources."
+            )
         }
         # Sort deterministically by filename, then by original TEXT entity order.
         # Consecutive entries become R/L pairs.
@@ -57,7 +62,10 @@ function Resolve-GlobalPairs {
                 $role0 = Get-FilenamePairRole -FileName $members[0].Document.File.Name
                 $role1 = Get-FilenamePairRole -FileName $members[1].Document.File.Name
                 if ($null -ne $role0 -and $null -ne $role1 -and $role0 -eq $role1) {
-                    throw "Pair '$($group.Name)': both files claim role '$role0' ('$($members[0].Document.File.Name)' and '$($members[1].Document.File.Name)')."
+                    throw (
+                        "Pair '$($group.Name)': both files claim role '$role0' " +
+                        "('$($members[0].Document.File.Name)' and '$($members[1].Document.File.Name)')."
+                    )
                 }
                 # A single explicit marker determines the counterpart's opposite role.
                 # With no markers, compare names independently of caller order and culture.
@@ -67,10 +75,16 @@ function Resolve-GlobalPairs {
                 }
                 if ($swap) { $members = @($members[1], $members[0]) }
             }
-            $first = $members[0].Record; $second = $members[1].Record
-            if ([object]::ReferenceEquals($first.Shape, $second.Shape)) { throw "Pair label '$($group.Name)' resolves twice to the same part outline." }
+            $first = $members[0].Record
+            $second = $members[1].Record
+            if ([object]::ReferenceEquals($first.Shape, $second.Shape)) {
+                throw "Pair label '$($group.Name)' resolves twice to the same part outline."
+            }
             if ($first.Table -ne $second.Table) {
-                throw "Pair '$($group.Name)' selects inconsistent tables in '$($members[0].Document.File.Name)' and '$($members[1].Document.File.Name)'."
+                throw (
+                    "Pair '$($group.Name)' selects inconsistent tables in " +
+                    "'$($members[0].Document.File.Name)' and '$($members[1].Document.File.Name)'."
+                )
             }
             $state = Get-SymmetryState -FirstOrientation $first.Shape.Orientation -SecondOrientation $second.Shape.Orientation
             Write-Host "  Pair '$($group.Name)': R $($members[0].Document.File.Name) [TEXT $($members[0].EntityIndex)] -> L $($members[1].Document.File.Name) [TEXT $($members[1].EntityIndex)] | $state" -ForegroundColor DarkCyan
@@ -78,7 +92,12 @@ function Resolve-GlobalPairs {
                 $role = if ($index -eq 0) { 'R' } else { 'L' }
                 $record = $members[$index].Record
                 $rule = Get-TableRule -Table $record.Table -State $state -Role $role
-                $record.Role = $role; $record.State = $state; $record.GrooveEdge = $rule.Groove; $record.HandleEdges = @($rule.Handles); $record.Corner = $rule.Corner; $record.IsPair = $true
+                $record.Role = $role
+                $record.State = $state
+                $record.GrooveEdge = $rule.Groove
+                $record.HandleEdges = @($rule.Handles)
+                $record.Corner = $rule.Corner
+                $record.IsPair = $true
             }
             $members[0].Document.Stats.PairCount++
             if (-not [object]::ReferenceEquals($members[0].Document, $members[1].Document)) {

@@ -50,7 +50,10 @@ function Read-FeatureLabel {
     foreach ($commands in $commandSets) {
         $commandMatches = @($commands | ForEach-Object { $command.Match($_) })
         if ($commandMatches.Success -contains $false) { continue }
-        if ($commandMatches.Count -eq 2 -and $commandMatches[0].Groups['operation'].Value -ieq $commandMatches[1].Groups['operation'].Value) { continue }
+        if ($commandMatches.Count -eq 2 -and
+            $commandMatches[0].Groups['operation'].Value -ieq $commandMatches[1].Groups['operation'].Value) {
+            continue
+        }
 
         $result = [pscustomobject]@{
             HasSH = $false; HasZ = $false; Identifier = $identifier
@@ -81,7 +84,10 @@ function Read-FeatureLabel {
         $spelling = ($commands -replace '\s+', '') -join '_'
         if ($identifier) { $spelling = "${identifier}_$spelling" }
         if ($null -ne $parsed) {
-            throw "Invalid feature label '$Label': ambiguous spacing; write '$firstSpelling' or '$spelling' to specify the intended commands."
+            throw (
+                "Invalid feature label '$Label': ambiguous spacing; write '$firstSpelling' " +
+                "or '$spelling' to specify the intended commands."
+            )
         }
         $firstSpelling = $spelling
         $parsed = $result
@@ -100,7 +106,9 @@ function Get-Orientation {
 
 function Get-SymmetryState {
     param([string]$FirstOrientation, [string]$SecondOrientation)
-    if ($FirstOrientation -notin @('N','Y') -or $SecondOrientation -notin @('N','Y')) { throw "Invalid orientation state '$FirstOrientation/$SecondOrientation'." }
+    if ($FirstOrientation -notin @('N','Y') -or $SecondOrientation -notin @('N','Y')) {
+        throw "Invalid orientation state '$FirstOrientation/$SecondOrientation'."
+    }
     if ($FirstOrientation -eq 'N' -and $SecondOrientation -eq 'N') { return 'NN' }
     if ($FirstOrientation -eq 'Y' -and $SecondOrientation -eq 'Y') { return 'Y/Y' }
     return "$FirstOrientation/$SecondOrientation"
@@ -112,7 +120,12 @@ function Get-TableNumber {
     if ($null -eq $Prefix) { return 2 }
     $matchWidth = [math]::Abs([double]$Shape.Width - [double]$Prefix) -lt $sizeTolerance
     $matchHeight = [math]::Abs([double]$Shape.Height - [double]$Prefix) -lt $sizeTolerance
-    if (-not $matchWidth -and -not $matchHeight) { throw "Label '$Label': number before SH ($Prefix) does not match either dimension of part $($Shape.Width) x $($Shape.Height) mm." }
+    if (-not $matchWidth -and -not $matchHeight) {
+        throw (
+            "Label '$Label': number before SH ($Prefix) does not match either dimension of part " +
+            "$($Shape.Width) x $($Shape.Height) mm."
+        )
+    }
     if ([math]::Abs([double]$Shape.Width - [double]$Shape.Height) -lt 0.001) { return 2 }
     if ($matchWidth -and $matchHeight) { return 1 }
     $small = [math]::Min([double]$Shape.Width, [double]$Shape.Height)
@@ -129,7 +142,11 @@ function Assert-ZNotchFitsPart {
     $beforeZLimit = if ($Table -eq 1) { $small } else { $large }
     $afterZLimit  = if ($Table -eq 1) { $large } else { $small }
     if ([double]$ZParameters.LongLength -ge $beforeZLimit -or [double]$ZParameters.ShortLength -ge $afterZLimit) {
-        throw "Label '$Label': Z lengths ($($ZParameters.LongLength), $($ZParameters.ShortLength)) do not fit the $($Shape.Width)x$($Shape.Height) mm part under table $Table (limits: < $beforeZLimit and < $afterZLimit mm)."
+        throw (
+            "Label '$Label': Z lengths ($($ZParameters.LongLength), $($ZParameters.ShortLength)) " +
+            "do not fit the $($Shape.Width)x$($Shape.Height) mm part under table $Table " +
+            "(limits: < $beforeZLimit and < $afterZLimit mm)."
+        )
     }
 }
 

@@ -41,25 +41,60 @@ function Get-NotchedVertices {
     # Table 1: long notch length follows the shorter dimension; short notch length follows the longer dimension.
     if ($Table -notin @(1,2)) { throw "Unsupported handle-notch table '$Table'." }
     $isSquare = [math]::Abs([double]$Shape.Width - [double]$Shape.Height) -lt 0.001
-    $horizontalGetsLong = if ($isSquare) { $Table -eq 2 } elseif ($Table -eq 1) { [double]$Shape.Width -lt [double]$Shape.Height } else { [double]$Shape.Width -gt [double]$Shape.Height }
-    $verticalGetsLong = if ($isSquare) { $Table -eq 1 } elseif ($Table -eq 1) { [double]$Shape.Height -lt [double]$Shape.Width } else { [double]$Shape.Height -gt [double]$Shape.Width }
+    $horizontalGetsLong = if ($isSquare) {
+        $Table -eq 2
+    } elseif ($Table -eq 1) {
+        [double]$Shape.Width -lt [double]$Shape.Height
+    } else {
+        [double]$Shape.Width -gt [double]$Shape.Height
+    }
+    $verticalGetsLong = if ($isSquare) {
+        $Table -eq 1
+    } elseif ($Table -eq 1) {
+        [double]$Shape.Height -lt [double]$Shape.Width
+    } else {
+        [double]$Shape.Height -gt [double]$Shape.Width
+    }
     $a = [pscustomobject]@{ Name = 'A'; X = [double]$Shape.MinX; Y = [double]$Shape.MaxY }
     $b = [pscustomobject]@{ Name = 'B'; X = [double]$Shape.MaxX; Y = [double]$Shape.MaxY }
     $c = [pscustomobject]@{ Name = 'C'; X = [double]$Shape.MaxX; Y = [double]$Shape.MinY }
     $d = [pscustomobject]@{ Name = 'D'; X = [double]$Shape.MinX; Y = [double]$Shape.MinY }
-    $base = @($a,$b,$c,$d); $result = [System.Collections.Generic.List[object]]::new()
+    $base = @($a,$b,$c,$d)
+    $result = [System.Collections.Generic.List[object]]::new()
     for ($i = 0; $i -lt 4; $i++) {
         $v = $base[$i]
         if ($v.Name -ne $Corner) { $result.Add([pscustomobject]@{ X = $v.X; Y = $v.Y }); continue }
         $prev = $base[($i + 3) % 4]; $next = $base[($i + 1) % 4]
-        $prevDx = [double]$prev.X - [double]$v.X; $prevDy = [double]$prev.Y - [double]$v.Y
-        $nextDx = [double]$next.X - [double]$v.X; $nextDy = [double]$next.Y - [double]$v.Y
-        $prevOffset = if ([math]::Abs($prevDx) -gt 0) { if ($horizontalGetsLong) { $LongLength } else { $ShortLength } } else { if ($verticalGetsLong) { $LongLength } else { $ShortLength } }
-        $nextOffset = if ([math]::Abs($nextDx) -gt 0) { if ($horizontalGetsLong) { $LongLength } else { $ShortLength } } else { if ($verticalGetsLong) { $LongLength } else { $ShortLength } }
+        $prevDx = [double]$prev.X - [double]$v.X
+        $prevDy = [double]$prev.Y - [double]$v.Y
+        $nextDx = [double]$next.X - [double]$v.X
+        $nextDy = [double]$next.Y - [double]$v.Y
+        $prevOffset = if ([math]::Abs($prevDx) -gt 0) {
+            if ($horizontalGetsLong) { $LongLength } else { $ShortLength }
+        } else {
+            if ($verticalGetsLong) { $LongLength } else { $ShortLength }
+        }
+        $nextOffset = if ([math]::Abs($nextDx) -gt 0) {
+            if ($horizontalGetsLong) { $LongLength } else { $ShortLength }
+        } else {
+            if ($verticalGetsLong) { $LongLength } else { $ShortLength }
+        }
         $prevScale = if ([math]::Abs($prevDx) -gt 0) { [math]::Sign($prevDx) } else { [math]::Sign($prevDy) }
         $nextScale = if ([math]::Abs($nextDx) -gt 0) { [math]::Sign($nextDx) } else { [math]::Sign($nextDy) }
-        if ([math]::Abs($prevDx) -gt 0) { $p1x = $v.X + $prevScale * $prevOffset; $p1y = $v.Y } else { $p1x = $v.X; $p1y = $v.Y + $prevScale * $prevOffset }
-        if ([math]::Abs($nextDx) -gt 0) { $p3x = $v.X + $nextScale * $nextOffset; $p3y = $v.Y } else { $p3x = $v.X; $p3y = $v.Y + $nextScale * $nextOffset }
+        if ([math]::Abs($prevDx) -gt 0) {
+            $p1x = $v.X + $prevScale * $prevOffset
+            $p1y = $v.Y
+        } else {
+            $p1x = $v.X
+            $p1y = $v.Y + $prevScale * $prevOffset
+        }
+        if ([math]::Abs($nextDx) -gt 0) {
+            $p3x = $v.X + $nextScale * $nextOffset
+            $p3y = $v.Y
+        } else {
+            $p3x = $v.X
+            $p3y = $v.Y + $nextScale * $nextOffset
+        }
         $result.Add([pscustomobject]@{ X = [double]$p1x; Y = [double]$p1y })
         $result.Add([pscustomobject]@{ X = [double]($p1x + $p3x - $v.X); Y = [double]($p1y + $p3y - $v.Y) })
         $result.Add([pscustomobject]@{ X = [double]$p3x; Y = [double]$p3y })

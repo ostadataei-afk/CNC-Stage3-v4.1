@@ -6,17 +6,24 @@ function Apply-DxfPlan {
     if (-not $layer2Exists) { $layerHandle = $nextHandle.ToString('X'); $nextHandle++ }
     $sourceEntityCount = $Document.Entities.Count
     $sourceEntityHandles = @($Document.Entities | ForEach-Object { Get-FirstValue $_ 5 } | Where-Object { $null -ne $_ -and $_ -ne '' })
-    $notchCount = 0; $slotCount = 0
+    $notchCount = 0
+    $slotCount = 0
     $slotEntities = [System.Collections.Generic.List[object]]::new()
     foreach ($record in $Document.FeatureRecords) {
         if ($record.HasZ) {
-            $newPoints = Get-NotchedVertices -Shape $record.Shape -Corner $record.Corner -LongLength $record.NotchLongLength -ShortLength $record.NotchShortLength -Table $record.Table
+            $newPoints = Get-NotchedVertices `
+                -Shape $record.Shape `
+                -Corner $record.Corner `
+                -LongLength $record.NotchLongLength `
+                -ShortLength $record.NotchShortLength `
+                -Table $record.Table
             if ($newPoints.Count -ne 6) { throw "Handle notch for label '$($record.Label)' did not produce exactly six outline vertices." }
             Set-PolylineVertices -Entity $record.Shape.Entity -Points $newPoints
             $notchCount++
         }
         if ($record.HasSH) {
-            $handle = $nextHandle.ToString('X'); $nextHandle++
+            $handle = $nextHandle.ToString('X')
+            $nextHandle++
             $slotEntity = New-SlotLineEntity -Handle $handle -Edge $record.GrooveEdge -Shape $record.Shape -Offset $record.GrooveOffset
             $Document.Entities.Add($slotEntity)
             $slotEntities.Add($slotEntity)
@@ -34,7 +41,18 @@ function Apply-DxfPlan {
     Update-Handseed -Pairs $finalPairs -NextHandle $nextHandle
     $lines = [System.Collections.Generic.List[string]]::new()
     foreach ($pair in $finalPairs) { $lines.Add([string]$pair.CodeText); $lines.Add([string]$pair.Value) }
-    return [pscustomobject]@{ Source = $Document.File; OutputName = $Document.File.Name; Lines = $lines.ToArray(); NotchCount = $notchCount; SlotCount = $slotCount; Stats = $Document.Stats; Document = $Document; SourceEntityCount = $sourceEntityCount; SourceEntityHandles = $sourceEntityHandles; SlotEntities = $slotEntities.ToArray() }
+    return [pscustomobject]@{
+        Source = $Document.File
+        OutputName = $Document.File.Name
+        Lines = $lines.ToArray()
+        NotchCount = $notchCount
+        SlotCount = $slotCount
+        Stats = $Document.Stats
+        Document = $Document
+        SourceEntityCount = $sourceEntityCount
+        SourceEntityHandles = $sourceEntityHandles
+        SlotEntities = $slotEntities.ToArray()
+    }
 }
 
 function Write-CncDxfOutput {
@@ -46,8 +64,12 @@ function Test-GeneratedDxf {
     param([System.IO.FileInfo]$File, [object]$Plan)
     $parsed = Read-DxfDocument $File
     $expectedCount = [int]$Plan.SourceEntityCount + [int]$Plan.SlotCount
-    if ($parsed.Entities.Count -ne $expectedCount) { throw "Round-trip verification failed for '$($File.Name)': expected $expectedCount entities, found $($parsed.Entities.Count)." }
-    if (-not (Test-LayerExists -Pairs $parsed.Pairs -Name '2')) { throw "Round-trip verification failed for '$($File.Name)': DXF layer 2 is missing." }
+    if ($parsed.Entities.Count -ne $expectedCount) {
+        throw "Round-trip verification failed for '$($File.Name)': expected $expectedCount entities, found $($parsed.Entities.Count)."
+    }
+    if (-not (Test-LayerExists -Pairs $parsed.Pairs -Name '2')) {
+        throw "Round-trip verification failed for '$($File.Name)': DXF layer 2 is missing."
+    }
     foreach ($handle in $Plan.SourceEntityHandles) {
         $matches = @($parsed.Entities | Where-Object { (Get-FirstValue $_ 5) -eq $handle })
         if ($matches.Count -ne 1) { throw "Round-trip verification failed for '$($File.Name)': source handle '$handle' appears $($matches.Count) times." }

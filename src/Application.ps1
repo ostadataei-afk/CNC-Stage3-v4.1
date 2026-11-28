@@ -49,7 +49,10 @@ function Assert-CncOutputOwnership {
     if ($null -eq $marker -or $marker.PSIsContainer -or
         ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
         [IO.File]::ReadAllText($markerPath) -cne 'CNC-Stage3 managed output v1') {
-        throw "Output directory '$Path' is nonempty and is not managed by CNC. Use an empty directory or specify -ReplaceExistingOutput to replace it."
+        throw (
+            "Output directory '$Path' is nonempty and is not managed by CNC. " +
+            'Use an empty directory or specify -ReplaceExistingOutput to replace it.'
+        )
     }
 }
 
@@ -73,7 +76,10 @@ function Publish-CncBatch {
         $lock = [IO.FileStream]::new($lockPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite,
             [IO.FileShare]::None, 4096, [IO.FileOptions]::DeleteOnClose)
     } catch {
-        throw "Could not lock output '$OutputFolder'. Check '$lockPath' and retry after any active generation finishes. $($_.Exception.Message)"
+        throw (
+            "Could not lock output '$OutputFolder'. Check '$lockPath' and retry after any active " +
+            "generation finishes. $($_.Exception.Message)"
+        )
     }
 
     $stageCreated = $false
@@ -110,7 +116,10 @@ function Publish-CncBatch {
             if (-not $hadOutput) { throw "Could not publish output to '$OutputFolder': $publishError" }
             try { Move-CncOutputDirectory -From $backupFolder -To $OutputFolder }
             catch {
-                throw "Could not restore '$OutputFolder'. Previous output remains at '$backupFolder'. Publish error: $publishError. Restore error: $($_.Exception.Message)"
+                throw (
+                    "Could not restore '$OutputFolder'. Previous output remains at '$backupFolder'. " +
+                    "Publish error: $publishError. Restore error: $($_.Exception.Message)"
+                )
             }
             throw "Could not publish output to '$OutputFolder'. Previous output was restored. $publishError"
         }
@@ -154,7 +163,8 @@ try {
     if ($files.Count -eq 0) { throw "No DXF files found in folder $sourceFolder." }
     Write-Host "Number of input files: $($files.Count)" -ForegroundColor Cyan
 
-    $documents = [System.Collections.Generic.List[object]]::new(); $validationErrors = [System.Collections.Generic.List[string]]::new()
+    $documents = [System.Collections.Generic.List[object]]::new()
+    $validationErrors = [System.Collections.Generic.List[string]]::new()
     foreach ($file in $files) {
         Write-Host "`n[Validating] $($file.Name)" -ForegroundColor Yellow
         try {
@@ -192,13 +202,22 @@ try {
     }
     foreach ($doc in $documents) {
         Write-Host "  Detected OptiCut format: $($doc.OptiCutFormat) ($($doc.File.Name))" -ForegroundColor DarkCyan
-        Write-Host "  Verified $($doc.File.Name): parts $($doc.Stats.PartCount), dimension TEXT checked $($doc.Stats.DimensionCount), feature labels $($doc.Stats.FeatureCount), pairs $($doc.Stats.PairCount), grooves $($doc.Stats.GrooveCount), handle notches $($doc.Stats.HandleCount)" -ForegroundColor Green
+        Write-Host (
+            "  Verified $($doc.File.Name): parts $($doc.Stats.PartCount), " +
+            "dimension TEXT checked $($doc.Stats.DimensionCount), " +
+            "feature labels $($doc.Stats.FeatureCount), pairs $($doc.Stats.PairCount), " +
+            "grooves $($doc.Stats.GrooveCount), handle notches $($doc.Stats.HandleCount)"
+        ) -ForegroundColor Green
         foreach ($mark in $doc.FeatureRecords) {
             $actionParts = [System.Collections.Generic.List[string]]::new()
             if ($mark.HasSH) { $actionParts.Add("Groove $($mark.GrooveEdge), offset $($mark.GrooveOffset) mm") }
             if ($mark.HasZ) { $actionParts.Add("Notch $($mark.Corner); edges $($mark.HandleEdges -join '+')") }
             $mapping = if ($mark.IsPair) { "$($mark.State)/$($mark.Role)" } else { "Standalone/$($mark.Shape.Orientation)" }
-            Write-Host "    $($mark.Label) | Handle $($mark.Shape.Handle) | $($mark.Shape.Width)x$($mark.Shape.Height) | Table $($mark.Table) | $mapping | $($actionParts -join '; ')" -ForegroundColor DarkCyan
+            Write-Host (
+                "    $($mark.Label) | Handle $($mark.Shape.Handle) | " +
+                "$($mark.Shape.Width)x$($mark.Shape.Height) | Table $($mark.Table) | " +
+                "$mapping | $($actionParts -join '; ')"
+            ) -ForegroundColor DarkCyan
         }
     }
     Write-Host "`nAll input files validated successfully; starting in-memory generation." -ForegroundColor Green
@@ -206,7 +225,12 @@ try {
     $generated = [System.Collections.Generic.List[object]]::new()
     foreach ($doc in $documents) {
         try { $generated.Add((Apply-DxfPlan $doc)) }
-        catch { throw "Error preparing output for '$($doc.File.Name)'; no output files have been written yet. Details: $($_.Exception.Message)" }
+        catch {
+            throw (
+                "Error preparing output for '$($doc.File.Name)'; no output files have been written yet. " +
+                "Details: $($_.Exception.Message)"
+            )
+        }
     }
     if ($ValidateOnly) {
         $verifyFolder = Join-Path ([System.IO.Path]::GetTempPath()) ('.dxf-verify-' + [guid]::NewGuid().ToString('N'))
@@ -222,7 +246,10 @@ try {
         } finally {
             if ($verifyCreated) { Remove-CncWorkDirectory $verifyFolder }
         }
-        Write-Host "`nValidation, in-memory generation, and DXF round-trip verification succeeded; no files were written to B because ValidateOnly was specified." -ForegroundColor Green
+        Write-Host (
+            "`nValidation, in-memory generation, and DXF round-trip verification succeeded; " +
+            'no files were written to B because ValidateOnly was specified.'
+        ) -ForegroundColor Green
         foreach ($item in $generated) { Write-Host "  $($item.Source.Name): handle notches $($item.NotchCount), groove lines $($item.SlotCount), DXF round-trip verification: passed" -ForegroundColor Green }
         return
     }
@@ -230,7 +257,11 @@ try {
     Publish-CncBatch -OutputFolder $OutputFolder -Generated $generated.ToArray() -ReplaceExistingOutput:$ReplaceExistingOutput
     Write-Host "`n=== Generation Successful ===" -ForegroundColor Green
     foreach ($item in $generated) {
-        Write-Host "  $($item.Source.Name) -> $(Join-Path $outputFolder $item.OutputName) | Parts: $($item.Stats.PartCount) | Handle notches: $($item.NotchCount) | Groove lines: $($item.SlotCount)" -ForegroundColor Green
+        Write-Host (
+            "  $($item.Source.Name) -> $(Join-Path $outputFolder $item.OutputName) | " +
+            "Parts: $($item.Stats.PartCount) | Handle notches: $($item.NotchCount) | " +
+            "Groove lines: $($item.SlotCount)"
+        ) -ForegroundColor Green
     }
     Write-Host 'Input files in A were not modified. The OptiCut TXT output is also unchanged.' -ForegroundColor Green
     Write-Host ''

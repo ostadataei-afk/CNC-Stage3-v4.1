@@ -31,12 +31,28 @@ function ConvertTo-CncPlanContract {
                     [pscustomobject]@{
                         handle = [string]$_.Shape.Handle
                         label = [string]$_.Label
-                        bounds = [pscustomobject]@{ minX = [double]$_.Shape.MinX; minY = [double]$_.Shape.MinY; maxX = [double]$_.Shape.MaxX; maxY = [double]$_.Shape.MaxY }
+                        bounds = [pscustomobject]@{
+                            minX = [double]$_.Shape.MinX
+                            minY = [double]$_.Shape.MinY
+                            maxX = [double]$_.Shape.MaxX
+                            maxY = [double]$_.Shape.MaxY
+                        }
                         table = [int]$_.Table
                         role = $_.Role
                         state = $_.State
-                        groove = $(if ($_.HasSH) { [pscustomobject]@{ edge = $_.GrooveEdge; offset = [double]$_.GrooveOffset } } else { $null })
-                        notch = $(if ($_.HasZ) { [pscustomobject]@{ corner = $_.Corner; longLength = [double]$_.NotchLongLength; shortLength = [double]$_.NotchShortLength } } else { $null })
+                        groove = $(if ($_.HasSH) {
+                            [pscustomobject]@{
+                                edge = $_.GrooveEdge
+                                offset = [double]$_.GrooveOffset
+                            }
+                        } else { $null })
+                        notch = $(if ($_.HasZ) {
+                            [pscustomobject]@{
+                                corner = $_.Corner
+                                longLength = [double]$_.NotchLongLength
+                                shortLength = [double]$_.NotchShortLength
+                            }
+                        } else { $null })
                     }
                 })
             }
